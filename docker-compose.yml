@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - "9292:9292"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-development-only-secret}
+      PRODUCT_CREATION_DELAY_SECONDS: ${PRODUCT_CREATION_DELAY_SECONDS:-5}
+    volumes:
+      - challenge-data:/data
+
+volumes:
+  challenge-data:

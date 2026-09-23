@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+bundle exec ruby db/seeds.rb
+
+exec "$@"

@@ -1,0 +1,392 @@
+openapi: 3.0.3
+
+info:
+  title: Products API
+  version: 1.0.0
+  description: >-
+    JSON API exposing authentication, asynchronous product creation and product
+    querying. A creation request is acknowledged immediately and completed by a
+    background worker, so the product becomes readable only after the configured
+    delay has elapsed.
+
+servers:
+  - url: http://localhost:9292
+    description: Local development
+
+tags:
+  - name: Authentication
+  - name: Products
+  - name: Jobs
+  - name: Meta
+
+paths:
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Exchange credentials for a bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+      responses:
+        '200':
+          description: Credentials accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /products:
+    post:
+      tags: [Products]
+      operationId: createProduct
+      summary: Request the asynchronous creation of a product
+      description: >-
+        Returns immediately without creating the product. The response carries the
+        identifier of the job that will create it and the identifier the product
+        will have once it exists.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreationRequest'
+      responses:
+        '202':
+          description: Creation accepted and scheduled
+          headers:
+            Location:
+              description: Where the progress of the creation can be followed
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductCreationAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Products]
+      operationId: listProducts
+      summary: List a page of products that already exist
+      description: >-
+        Ordered by created_at descending, then id descending. Pages beyond the
+        last page return an empty products array. Pending jobs are excluded.
+        Offset pagination is not a snapshot across requests: new products can
+        shift subsequent pages.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The products created so far
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /products/{id}:
+    get:
+      tags: [Products]
+      operationId: getProduct
+      summary: Read a single product
+      description: Responds with 404 until the creation job has completed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: The product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jobs/{id}:
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      summary: Follow the progress of a product creation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: The job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /health:
+    get:
+      tags: [Meta]
+      operationId: health
+      summary: Liveness probe
+      responses:
+        '200':
+          description: The service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /openapi.yaml:
+    get:
+      tags: [Meta]
+      operationId: contract
+      summary: This document
+      description: Served uncached so clients always read the current contract.
+      responses:
+        '200':
+          description: The OpenAPI contract
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store, no-cache, must-revalidate
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /AUTHORS:
+    get:
+      tags: [Meta]
+      operationId: authors
+      summary: Authorship of this project
+      description: Cacheable for twenty four hours.
+      responses:
+        '200':
+          description: The authors file
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=86400
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      description: Identifier of the resource
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: The request does not satisfy this contract
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication is missing or no longer valid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              example: unauthorized
+            message:
+              type: string
+              example: A valid bearer token is required
+
+    Credentials:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 1
+          example: admin
+        password:
+          type: string
+          format: password
+          minLength: 1
+          example: password123
+
+    Token:
+      type: object
+      required: [token, token_type, expires_in]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          example: 3600
+
+    ProductCreationRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Laptop
+
+    ProductCreationAccepted:
+      type: object
+      required: [job_id, product_id, status]
+      additionalProperties: false
+      properties:
+        job_id:
+          type: string
+          example: 0f6a3a8c-1f0e-4a9f-9a2b-2b6f4a1c9d10
+        product_id:
+          type: string
+          example: 6d2f7b4e-9c31-4f0a-b7d5-3a1c8e5f2b44
+        status:
+          $ref: '#/components/schemas/JobStatus'
+
+    JobStatus:
+      type: string
+      enum: [pending, completed, failed]
+
+    Job:
+      type: object
+      required: [id, product_id, status, created_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        created_at:
+          type: string
+          format: date-time
+
+    Product:
+      type: object
+      required: [id, name, created_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          example: Laptop
+        created_at:
+          type: string
+          format: date-time
+
+    ProductList:
+      type: object
+      required: [products, pagination]
+      additionalProperties: false
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      required: [page, per_page, total, total_pages]
+      additionalProperties: false
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+          minimum: 0
+        total_pages:
+          type: integer
+          minimum: 0
+
+    Health:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ok]

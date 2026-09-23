@@ -1,0 +1,8 @@
+.atl/
+.bundle/
+.git/
+.ruby-version
+db/*.sqlite3
+spec/
+tmp/
+vendor/
