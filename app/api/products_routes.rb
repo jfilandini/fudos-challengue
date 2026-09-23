@@ -6,15 +6,25 @@ module Challenge
       def self.registered(app)
         app.helpers do
           def serialize_product(product)
-            { id: product.id, name: product.name, created_at: Support::Timestamp.serialize(product.created_at) }
+            {
+              id: product.id, name: product.name,
+              requested_by_user_id: product.requested_by_user_id,
+              created_at: Support::Timestamp.serialize(product.created_at)
+            }
           end
         end
 
         app.post "/products" do
-          job = container.enqueue_product_creation.call(name: validated_params["name"])
+          job = container.enqueue_product_creation.call(
+            name: validated_params["name"],
+            requested_by_user_id: env.fetch(Middleware::Authentication::USER_ID_KEY),
+            idempotency_key: env.fetch("HTTP_IDEMPOTENCY_KEY")
+          )
           headers "location" => "/jobs/#{job.id}"
 
-          json({ job_id: job.id, product_id: job.product_id, status: job.status }, 202)
+          json({ job_id: job.id, product_id: job.product_id, status: Domain::Job::PENDING }, 202)
+        rescue UseCases::EnqueueProductCreation::IdempotencyConflict
+          error!(409, :idempotency_conflict, "Idempotency key was already used with a different product name")
         end
 
         app.get "/products" do

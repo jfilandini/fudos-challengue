@@ -34,6 +34,43 @@ RSpec.describe "Products" do
       expect(container.product_repository.find(created["product_id"])).to be_nil
     end
 
+    it "preserves the authenticated requester through the job and product" do
+      users = %w[alice bob].map do |username|
+        container.user_repository.create(username: username, password: "password123", now: container.clock.now)
+      end
+      creations = users.map do |user|
+        post_json "/auth/login", username: user.username, password: "password123"
+        token = json_body.fetch("token")
+        headers = { "HTTP_AUTHORIZATION" => "Bearer #{token}" }
+        post_json "/products", { name: "Laptop" }, headers
+        expect(last_response.status).to eq(202)
+        [user, json_body, headers]
+      end
+
+      creations.each do |user, created, headers|
+        get "/jobs/#{created.fetch('job_id')}", {}, headers
+        expect(json_body).to include("status" => "pending", "requested_by_user_id" => user.id.to_s)
+      end
+      container.process_due_jobs.call
+      creations.each do |user, created, headers|
+        get "/products/#{created.fetch('product_id')}", {}, headers
+        expect(last_response.status).to eq(200)
+        expect(json_body.fetch("requested_by_user_id")).to eq(user.id.to_s)
+        get "/jobs/#{created.fetch('job_id')}", {}, headers
+        expect(json_body).to include("status" => "completed", "requested_by_user_id" => user.id.to_s)
+      end
+      get "/products", {}, auth_header
+      expect(json_body.fetch("products").map { |product| product.fetch("requested_by_user_id") })
+        .to contain_exactly(*users.map { |user| user.id.to_s })
+    end
+
+    it "rejects a client-supplied requester identity" do
+      post_json "/products", { name: "Laptop", requested_by_user_id: "someone-else" }, auth_header
+
+      expect(last_response.status).to eq(400)
+      expect(container.job_repository.due(container.clock.now)).to be_empty
+    end
+
     it "refuses a name the contract does not allow" do
       post_json "/products", { name: "" }, auth_header
 

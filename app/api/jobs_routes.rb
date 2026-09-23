@@ -11,6 +11,7 @@ module Challenge
           json(
             id: job.id,
             product_id: job.product_id,
+            requested_by_user_id: job.requested_by_user_id,
             status: job.status,
             created_at: Support::Timestamp.serialize(job.created_at)
           )

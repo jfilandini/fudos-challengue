@@ -18,7 +18,9 @@ module ApiHelpers
   end
 
   def post_json(path, payload, headers = {})
-    post(path, JSON.generate(payload), { "CONTENT_TYPE" => "application/json" }.merge(headers))
+    defaults = { "CONTENT_TYPE" => "application/json" }
+    defaults["HTTP_IDEMPOTENCY_KEY"] = SecureRandom.uuid if path == "/products"
+    post(path, JSON.generate(payload), defaults.merge(headers))
   end
 end
 

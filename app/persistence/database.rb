@@ -15,7 +15,26 @@ module Challenge
       end
 
       def setup!
-        @monitor.synchronize { @connection.execute_batch(File.read(SCHEMA_PATH)) }
+        @monitor.synchronize do
+          @connection.transaction(:immediate) do
+            @connection.execute_batch(File.read(SCHEMA_PATH))
+            # Existing databases predate request attribution; preserve their rows.
+            %w[jobs products].each do |table|
+              columns = @connection.execute("PRAGMA table_info(#{table})").map { |row| row["name"] }
+              unless columns.include?("requested_by_user_id")
+                @connection.execute("ALTER TABLE #{table} ADD COLUMN requested_by_user_id TEXT")
+              end
+            end
+            job_columns = @connection.execute("PRAGMA table_info(jobs)").map { |row| row["name"] }
+            unless job_columns.include?("idempotency_key")
+              @connection.execute("ALTER TABLE jobs ADD COLUMN idempotency_key TEXT")
+            end
+            @connection.execute(
+              "CREATE UNIQUE INDEX IF NOT EXISTS index_jobs_on_requester_and_idempotency_key " \
+              "ON jobs (requested_by_user_id, idempotency_key)"
+            )
+          end
+        end
         self
       end
 

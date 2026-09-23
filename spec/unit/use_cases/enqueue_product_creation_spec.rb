@@ -7,26 +7,27 @@ RSpec.describe Challenge::UseCases::EnqueueProductCreation do
   let(:clock) { FrozenClock.new }
 
   it "records the request as a pending job" do
-    job = enqueue.call(name: "Laptop")
+    job = enqueue.call(name: "Laptop", requested_by_user_id: "1", idempotency_key: SecureRandom.uuid)
 
     expect(job).to be_pending
     expect(job.product_name).to eq("Laptop")
+    expect(job.requested_by_user_id).to eq("1")
     expect(jobs.find(job.id)).to eq(job)
   end
 
   it "schedules the job for the configured delay" do
-    expect(enqueue.call(name: "Laptop").run_at).to eq(clock.now + 5)
+    expect(enqueue.call(name: "Laptop", requested_by_user_id: "1", idempotency_key: SecureRandom.uuid).run_at).to eq(clock.now + 5)
   end
 
   it "gives every request its own job and product identifiers" do
-    first = enqueue.call(name: "Laptop")
-    second = enqueue.call(name: "Laptop")
+    first = enqueue.call(name: "Laptop", requested_by_user_id: "1", idempotency_key: SecureRandom.uuid)
+    second = enqueue.call(name: "Laptop", requested_by_user_id: "1", idempotency_key: SecureRandom.uuid)
 
     expect([first.id, first.product_id]).not_to include(second.id, second.product_id)
   end
 
   it "withholds the job from the worker until the delay has elapsed" do
-    job = enqueue.call(name: "Laptop")
+    job = enqueue.call(name: "Laptop", requested_by_user_id: "1", idempotency_key: SecureRandom.uuid)
 
     expect(jobs.due(clock.now)).to be_empty
     expect(jobs.due(clock.now + 5).map(&:id)).to eq([job.id])

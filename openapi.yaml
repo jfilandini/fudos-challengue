@@ -51,7 +51,24 @@ paths:
       description: >-
         Returns immediately without creating the product. The response carries the
         identifier of the job that will create it and the identifier the product
-        will have once it exists.
+        will have once it exists. Idempotency-Key is a client-generated transaction
+        identifier scoped to the authenticated user. Replays with the same key and
+        exactly the same validated name return the original 202 acceptance body and
+        Location, even after completion or failure; use GET /jobs/{id} for current
+        status. A different name with the same key returns 409. Keys are retained
+        for the lifetime of the job, including across restarts, with no automatic
+        expiration. A new key represents a new creation, even for the same name.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated key reused for every retry of the same request.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[A-Za-z0-9_-]+$'
+          example: '550e8400-e29b-41d4-a716-446655440000'
       security:
         - bearerAuth: []
       requestBody:
@@ -76,6 +93,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
     get:
       tags: [Products]
       operationId: listProducts
@@ -225,6 +244,12 @@ components:
         type: string
 
   responses:
+    IdempotencyConflict:
+      description: The key was already used by this user with a different creation payload.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     BadRequest:
       description: The request does not satisfy this contract
       content:
@@ -322,9 +347,15 @@ components:
 
     Job:
       type: object
-      required: [id, product_id, status, created_at]
+      required: [id, product_id, status, created_at, requested_by_user_id]
       additionalProperties: false
       properties:
+        requested_by_user_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Authenticated requester's JWT subject; null for legacy records.
+          example: '1'
         id:
           type: string
         product_id:
@@ -337,9 +368,15 @@ components:
 
     Product:
       type: object
-      required: [id, name, created_at]
+      required: [id, name, created_at, requested_by_user_id]
       additionalProperties: false
       properties:
+        requested_by_user_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Authenticated requester's JWT subject; null for legacy records.
+          example: '1'
         id:
           type: string
         name:

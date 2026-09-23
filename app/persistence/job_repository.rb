@@ -3,19 +3,28 @@
 module Challenge
   module Persistence
     class JobRepository
-      COLUMNS = "id, product_id, product_name, status, run_at, created_at, updated_at"
+      COLUMNS = "id, product_id, product_name, status, run_at, created_at, updated_at, requested_by_user_id, idempotency_key"
 
       def initialize(database)
         @database = database
       end
 
-      def create(id:, product_id:, product_name:, run_at:, now:)
+      def create(id:, product_id:, product_name:, run_at:, now:, requested_by_user_id: nil, idempotency_key: nil)
         @database.execute(
-          "INSERT INTO jobs (#{COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO jobs (#{COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " \
+          "ON CONFLICT(requested_by_user_id, idempotency_key) DO NOTHING",
           [id, product_id, product_name, Domain::Job::PENDING,
-           Support::Timestamp.serialize(run_at), Support::Timestamp.serialize(now), Support::Timestamp.serialize(now)]
+           Support::Timestamp.serialize(run_at), Support::Timestamp.serialize(now), Support::Timestamp.serialize(now), requested_by_user_id, idempotency_key]
         )
-        find(id)
+        if idempotency_key
+          row = @database.execute(
+            "SELECT #{COLUMNS} FROM jobs WHERE requested_by_user_id = ? AND idempotency_key = ?",
+            [requested_by_user_id, idempotency_key]
+          ).first
+          to_job(row)
+        else
+          find(id)
+        end
       end
 
       def find(id)
@@ -50,6 +59,7 @@ module Challenge
       def to_job(row)
         Domain::Job.new(
           id: row["id"],
+          requested_by_user_id: row["requested_by_user_id"],
           product_id: row["product_id"],
           product_name: row["product_name"],
           status: row["status"],

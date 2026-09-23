@@ -20,7 +20,10 @@ module Challenge
 
       def process(job, now)
         @unit_of_work.transaction do
-          @product_repository.create(id: job.product_id, name: job.product_name, created_at: now)
+          @product_repository.create(
+            id: job.product_id, name: job.product_name, created_at: now,
+            requested_by_user_id: job.requested_by_user_id
+          )
           @job_repository.mark_completed(job.id, now)
         end
         true

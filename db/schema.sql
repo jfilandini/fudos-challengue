@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  requested_by_user_id TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -15,6 +16,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
   product_id TEXT NOT NULL,
   product_name TEXT NOT NULL,
+  idempotency_key TEXT,
+  requested_by_user_id TEXT,
   status TEXT NOT NULL,
   run_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
