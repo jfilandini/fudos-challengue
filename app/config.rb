@@ -4,7 +4,7 @@ module Challenge
   class Config
     MissingSecretError = Class.new(StandardError)
 
-    DEVELOPMENT_DATABASE_PATH = "db/challenge.sqlite3"
+    DEVELOPMENT_DATABASE_PATH = "db/development.sqlite3"
     TEST_DATABASE_PATH = ":memory:"
     DEVELOPMENT_JWT_SECRET = "development-secret"
     DEFAULT_JWT_TTL_SECONDS = 3600

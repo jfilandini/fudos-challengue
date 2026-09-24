@@ -39,6 +39,23 @@ configured secret.
 The seeded user is `admin` / `password123`. Override with `SEED_USERNAME` and
 `SEED_PASSWORD` before seeding.
 
+To add optional demo products through the same seed script:
+
+```bash
+SEED_MOCK_PRODUCTS=true bundle exec rake db:seed
+# Or seed on Docker startup:
+SEED_MOCK_PRODUCTS=true docker compose up --build
+```
+
+This finds or creates the configured seed user and a second user named
+`<SEED_USERNAME>-demo` (`admin` and `admin-demo` by default), then adds 25 products
+for each, using their actual database IDs. New users receive `SEED_PASSWORD`
+(`password123` by default); existing users' passwords are not changed. Stable
+product IDs make repeat runs skip existing products without overwriting edits.
+Deleted mock products are recreated when seeding is enabled again. The products
+are inserted directly; no asynchronous jobs are created. Mock seeding is disabled
+by default and is intended for local testing and demonstrations.
+
 ## Tests
 
 ```bash
@@ -171,20 +188,33 @@ then `id`; this prioritizes due jobs deterministically but does not guarantee th
 order in which concurrent workers finish. Each processing pass handles at most
 100 jobs to avoid an unbounded drain loop.
 
-The claim, including a private ownership token, commits before processing starts.
+The claim commits before processing starts.
 Product insertion and job completion then share a separate transaction. Completion
-and failure updates require both the matching token and `in_progress` status,
-so stale updates cannot turn a completed job into a failed one. Processing errors
+and failure updates require `in_progress` status, so terminal jobs cannot be
+changed to another terminal state through these methods. Processing errors
 roll back the product, attempt to mark the claimed job failed, and log the job ID
 and exception class.
 
 If a worker dies after claiming but before completion, the job remains
 `in_progress`, including across restarts. `GET /jobs/{id}` exposes its status and
-`updated_at` for investigation; the internal ownership token is not exposed.
+`updated_at` for investigation.
 There is no automatic timeout, lease expiry, or retry endpoint. An old
 `in_progress` timestamp is a signal to investigate, not proof the worker is dead.
 Before any manual recovery, stop or verify termination of the owning worker and
 inspect the database; do not blindly reset active jobs to pending.
+
+Claim tokens are intentionally omitted: atomic claiming selects only `pending`
+jobs, and this implementation never reassigns `in_progress` jobs. If recovery or
+reassignment is introduced, add a fresh ownership token (or claim generation) on
+every claim and require it on completion/failure updates within the product
+transaction. Otherwise an original worker that resumes after reassignment could
+interfere with the replacement worker. A database lock alone does not protect that
+interval because the claim transaction has already committed. Such tokens would
+not by themselves make external side effects idempotent.
+
+Database setup removes the obsolete `claim_token` column from existing databases
+while preserving jobs and their states. Stop processes running the old code before
+upgrading, since that code still expects the column to exist.
 
 The application still starts one worker thread by default. Independent application
 processes can safely claim jobs from the same local SQLite file, but SQLite still
@@ -232,7 +262,7 @@ use route templates and status classes, not user, product or job IDs.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `RACK_ENV` | `development` | Response validation runs outside production |
-| `DATABASE_PATH` | `db/challenge.sqlite3` | SQLite file, `:memory:` under test |
+| `DATABASE_PATH` | `db/development.sqlite3` | SQLite file, `:memory:` under test |
 | `JWT_SECRET` | development fallback | HS256 signing key, required in production |
 | `JWT_TTL_SECONDS` | `3600` | Token lifetime |
 | `PRODUCT_CREATION_DELAY_SECONDS` | `5` | Creation delay, `0` under test |

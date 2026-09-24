@@ -43,6 +43,15 @@ RSpec.describe "Meta endpoints" do
   end
 
   describe "compression" do
+    it "compresses static files and preserves their cache headers" do
+      get "/openapi.yaml", {}, "HTTP_ACCEPT_ENCODING" => "gzip"
+
+      expect(last_response.headers["content-encoding"]).to eq("gzip")
+      expect(last_response.headers["cache-control"]).to eq("no-store, no-cache, must-revalidate")
+      expect(Zlib::GzipReader.new(StringIO.new(last_response.body)).read)
+        .to eq(File.read(Challenge::Application::OPENAPI_PATH))
+    end
+
     it "compresses the response when the client accepts gzip" do
       get "/health", {}, "HTTP_ACCEPT_ENCODING" => "gzip"
 
@@ -70,6 +79,32 @@ RSpec.describe "Meta endpoints" do
 
       expect(last_response.status).to eq(404)
       expect(json_body["error"]).to include("code" => "not_found")
+    end
+  end
+
+  describe "static file delivery" do
+    ["/openapi.yaml", "/AUTHORS"].each do |path|
+      it "serves HEAD #{path} with GET headers and no body" do
+        get path
+        headers = last_response.headers
+
+        head path
+
+        expect(last_response.status).to eq(200)
+        expect(last_response.body).to be_empty
+        %w[content-type content-length cache-control last-modified].each do |name|
+          expect(last_response.headers[name]).to eq(headers.fetch(name))
+        end
+      end
+    end
+
+    it "does not expose other repository files" do
+      %w[/Gemfile /app/config.rb /openapi.yaml/Gemfile /AUTHORS/Gemfile].each do |path|
+        get path, {}, auth_header
+
+        expect(last_response.status).to eq(404)
+        expect(json_body["error"]["code"]).to eq("not_found")
+      end
     end
   end
 end

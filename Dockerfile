@@ -17,7 +17,7 @@ FROM ruby:3.2.2-slim
 ENV BUNDLE_DEPLOYMENT=true \
     BUNDLE_PATH=/usr/local/bundle \
     BUNDLE_WITHOUT=development:test \
-    DATABASE_PATH=/data/challenge.sqlite3 \
+    DATABASE_PATH=/data/production.sqlite3 \
     PORT=9292 \
     RACK_ENV=production
 

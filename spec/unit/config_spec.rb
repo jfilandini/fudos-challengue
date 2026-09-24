@@ -9,7 +9,7 @@ RSpec.describe Challenge::Config do
     config = config_for
 
     expect(config.environment).to eq("development")
-    expect(config.database_path).to eq("db/challenge.sqlite3")
+    expect(config.database_path).to eq("db/development.sqlite3")
     expect(config.jwt_ttl_seconds).to eq(3600)
     expect(config.product_creation_delay_seconds).to eq(5)
     expect(config.worker_poll_interval_seconds).to eq(0.5)

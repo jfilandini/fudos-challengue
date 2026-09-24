@@ -6,8 +6,8 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET:-development-only-secret}
       PRODUCT_CREATION_DELAY_SECONDS: ${PRODUCT_CREATION_DELAY_SECONDS:-5}
+      SEED_MOCK_PRODUCTS: ${SEED_MOCK_PRODUCTS:-false}
+      SEED_USERNAME: ${SEED_USERNAME:-admin}
+      SEED_PASSWORD: ${SEED_PASSWORD:-password123}
     volumes:
-      - challenge-data:/data
-
-volumes:
-  challenge-data:
+      - ./data:/data
