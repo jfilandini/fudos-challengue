@@ -7,8 +7,8 @@ module Challenge
         @product_repository = product_repository
       end
 
-      def call(id)
-        @product_repository.find(id)
+      def call(id, requested_by_user_id:)
+        @product_repository.find_for_user(id, requested_by_user_id: requested_by_user_id)
       end
     end
   end

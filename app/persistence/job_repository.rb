@@ -29,6 +29,14 @@ module Challenge
         end
       end
 
+      def find_for_user(id, requested_by_user_id:)
+        row = @database.execute(
+          "SELECT #{COLUMNS} FROM jobs WHERE id = ? AND requested_by_user_id = ?",
+          [id, requested_by_user_id]
+        ).first
+        row && to_job(row)
+      end
+
       def find(id)
         row = @database.execute("SELECT #{COLUMNS} FROM jobs WHERE id = ?", [id]).first
         row && to_job(row)

@@ -98,8 +98,11 @@ paths:
     get:
       tags: [Products]
       operationId: listProducts
-      summary: List a page of products that already exist
+      summary: List a page of the authenticated user's products
       description: >-
+        Only products requested by the verified JWT subject are returned and counted.
+        Legacy products without an owner are excluded. User-supplied query parameters
+        cannot override ownership. Responses use Cache-Control no-store.
         Ordered by created_at descending, then id descending. Pages beyond the
         last page return an empty products array. Pending jobs are excluded.
         Offset pagination is not a snapshot across requests: new products can
@@ -138,7 +141,10 @@ paths:
       tags: [Products]
       operationId: getProduct
       summary: Read a single product
-      description: Responds with 404 until the creation job has completed.
+      description: >-
+        Returns only a product requested by the verified JWT subject. Responds with
+        404 for missing products, other users' products, ownerless legacy products,
+        or until the creation job has completed. Responses use Cache-Control no-store.
       security:
         - bearerAuth: []
       parameters:
@@ -161,6 +167,9 @@ paths:
       operationId: getJob
       summary: Follow the progress of a product creation
       description: >-
+        Only the requester identified by the verified JWT subject may read the job.
+        Missing, other users' and ownerless legacy jobs all return 404.
+        Responses use Cache-Control no-store.
         Jobs transition from pending to in_progress when atomically claimed,
         then to completed or failed. updated_at records the latest transition.
         An interrupted worker can leave a job in_progress indefinitely; these jobs
@@ -352,15 +361,9 @@ components:
 
     Job:
       type: object
-      required: [id, product_id, status, created_at, updated_at, requested_by_user_id]
+      required: [id, product_id, status, created_at, updated_at]
       additionalProperties: false
       properties:
-        requested_by_user_id:
-          type: string
-          nullable: true
-          readOnly: true
-          description: Authenticated requester's JWT subject; null for legacy records.
-          example: '1'
         id:
           type: string
         product_id:
@@ -376,15 +379,9 @@ components:
 
     Product:
       type: object
-      required: [id, name, created_at, requested_by_user_id]
+      required: [id, name, created_at]
       additionalProperties: false
       properties:
-        requested_by_user_id:
-          type: string
-          nullable: true
-          readOnly: true
-          description: Authenticated requester's JWT subject; null for legacy records.
-          example: '1'
         id:
           type: string
         name:

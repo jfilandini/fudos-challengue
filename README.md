@@ -197,14 +197,18 @@ The JWT contains the user's ID as the string `sub` claim, not their username.
 The API takes that verified identity from the authentication middleware and saves
 it as `requested_by_user_id` on the creation job. The worker copies it to the
 product when processing that job, preserving who requested creation even though
-execution happens later. Both `GET /jobs/{id}` and product query responses expose
-this field. It is server-assigned; including it in a creation request is rejected.
+execution happens later. This field is internal and is not included in product
+or job responses. It is server-assigned; including it in a creation request is rejected.
 
 Database setup upgrades existing SQLite tables without dropping data. Previously
 stored jobs and products have a null requester because their original requester
-cannot be reconstructed. Pending legacy jobs remain processable. Attribution is
-not an ownership/access-control policy: authenticated users can still query all
-products and jobs, as before.
+cannot be reconstructed. Pending legacy jobs remain processable. Ownership is enforced on product lists, pagination counts, individual products
+and jobs using the verified JWT subject. Another user's resource returns the same
+404 response as a missing resource. Legacy records with a null requester are
+inaccessible through these endpoints until ownership is explicitly assigned by an
+administrator outside the API. User IDs in query parameters or request bodies
+cannot override the authenticated identity. Protected responses use `Cache-Control:
+no-store` to prevent caching personalized data.
 
 ## Production observability
 

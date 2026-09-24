@@ -18,8 +18,12 @@ module Challenge
         token = BEARER_SCHEME.match(env["HTTP_AUTHORIZATION"].to_s)
         return unauthorized unless token
 
-        env[USER_ID_KEY] = @container.jwt_encoder.decode(token[:token])["sub"]
-        @app.call(env)
+        subject = @container.jwt_encoder.decode(token[:token])["sub"]
+        return unauthorized unless subject.is_a?(String) && !subject.strip.empty?
+
+        env[USER_ID_KEY] = subject
+        status, headers, body = @app.call(env)
+        [status, headers.merge("cache-control" => "no-store"), body]
       rescue Support::JwtEncoder::InvalidToken
         unauthorized
       end

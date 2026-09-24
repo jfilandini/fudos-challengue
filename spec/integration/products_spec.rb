@@ -49,19 +49,24 @@ RSpec.describe "Products" do
 
       creations.each do |user, created, headers|
         get "/jobs/#{created.fetch('job_id')}", {}, headers
-        expect(json_body).to include("status" => "pending", "requested_by_user_id" => user.id.to_s)
+        expect(json_body).to include("status" => "pending")
+        expect(json_body).not_to have_key("requested_by_user_id")
+        expect(container.job_repository.find(created.fetch("job_id")).requested_by_user_id).to eq(user.id.to_s)
       end
       container.process_due_jobs.call
       creations.each do |user, created, headers|
         get "/products/#{created.fetch('product_id')}", {}, headers
         expect(last_response.status).to eq(200)
-        expect(json_body.fetch("requested_by_user_id")).to eq(user.id.to_s)
+        expect(json_body).not_to have_key("requested_by_user_id")
+        expect(container.product_repository.find(created.fetch("product_id")).requested_by_user_id).to eq(user.id.to_s)
         get "/jobs/#{created.fetch('job_id')}", {}, headers
-        expect(json_body).to include("status" => "completed", "requested_by_user_id" => user.id.to_s)
+        expect(json_body).to include("status" => "completed")
+        expect(json_body).not_to have_key("requested_by_user_id")
       end
       get "/products", {}, auth_header
-      expect(json_body.fetch("products").map { |product| product.fetch("requested_by_user_id") })
-        .to contain_exactly(*users.map { |user| user.id.to_s })
+      expect(json_body.fetch("products").map { |product| product.fetch("id") })
+        .to contain_exactly(creations.first[1].fetch("product_id"))
+      expect(json_body.fetch("products")).to all(satisfy { |product| !product.key?("requested_by_user_id") })
     end
 
     it "rejects a client-supplied requester identity" do
@@ -97,7 +102,7 @@ RSpec.describe "Products" do
         now = container.clock.now
         23.times do |index|
           container.product_repository.create(
-            id: format("product-%02d", index), name: "Product #{index}", created_at: now
+            requested_by_user_id: "1", id: format("product-%02d", index), name: "Product #{index}", created_at: now
           )
         end
         enqueue_product(name: "Still pending")

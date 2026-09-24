@@ -8,7 +8,6 @@ module Challenge
           def serialize_product(product)
             {
               id: product.id, name: product.name,
-              requested_by_user_id: product.requested_by_user_id,
               created_at: Support::Timestamp.serialize(product.created_at)
             }
           end
@@ -29,6 +28,7 @@ module Challenge
 
         app.get "/products" do
           result = container.list_products.call(
+            requested_by_user_id: env.fetch(Middleware::Authentication::USER_ID_KEY),
             page: validated_params.fetch("page", 1),
             per_page: validated_params.fetch("per_page", 20)
           )
@@ -42,7 +42,9 @@ module Challenge
         end
 
         app.get "/products/:id" do
-          product = container.find_product.call(validated_params["id"])
+          product = container.find_product.call(
+            validated_params["id"], requested_by_user_id: env.fetch(Middleware::Authentication::USER_ID_KEY)
+          )
           error!(404, :not_found, "The product does not exist") unless product
 
           json(serialize_product(product))

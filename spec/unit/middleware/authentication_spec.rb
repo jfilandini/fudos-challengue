@@ -60,4 +60,17 @@ RSpec.describe Challenge::Middleware::Authentication do
   it "accepts the bearer scheme whatever its casing" do
     expect(call("/products", "bearer #{container.jwt_encoder.encode(7)}").first).to eq(200)
   end
+  [nil, "", " ", 123, ["1"]].each do |subject|
+    it "rejects an invalid JWT subject #{subject.inspect}" do
+      token = JWT.encode({ sub: subject, exp: Time.now.to_i + 60 }, container.config.jwt_secret, "HS256")
+      expect(call("/products", "Bearer #{token}").first).to eq(401)
+      expect(downstream_env).to be_empty
+    end
+  end
+
+  it "rejects a signed token without a subject" do
+    token = JWT.encode({ exp: Time.now.to_i + 60 }, container.config.jwt_secret, "HS256")
+    expect(call("/products", "Bearer #{token}").first).to eq(401)
+  end
+
 end
