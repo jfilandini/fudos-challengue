@@ -3,6 +3,29 @@
 require "tmpdir"
 
 RSpec.describe Challenge::Persistence::Database do
+  it "removes obsolete claim tokens without losing job state or idempotency keys" do
+    database = described_class.new(":memory:").setup!
+    database.execute("ALTER TABLE jobs ADD COLUMN claim_token TEXT")
+    jobs = Challenge::Persistence::JobRepository.new(database)
+    now = FrozenClock.new.now
+    job = jobs.create(id: "claimed", product_id: "future", product_name: "Coffee",
+                      run_at: now, now: now, requested_by_user_id: "1", idempotency_key: "original-key")
+    jobs.claim_next(now)
+    database.execute("UPDATE jobs SET claim_token = ? WHERE id = ?", ["old-token", job.id])
+
+    database.setup!
+    database.setup!
+
+    expect(database.execute("PRAGMA table_info(jobs)").map { |row| row["name"] }).not_to include("claim_token")
+    expect(jobs.find(job.id)).to have_attributes(status: "in_progress", product_id: "future", requested_by_user_id: "1")
+    expect(database.execute("SELECT idempotency_key FROM jobs WHERE id = ?", [job.id]).first["idempotency_key"])
+      .to eq("original-key")
+    expect(jobs.claim_next(now)).to be_nil
+    jobs.mark_completed(job.id, now)
+    expect(jobs.find(job.id)).to be_completed
+    database.close
+  end
+
   it "upgrades existing tables without losing products or pending jobs and can run repeatedly" do
     Dir.mktmpdir do |directory|
       path = File.join(directory, "legacy.sqlite3")

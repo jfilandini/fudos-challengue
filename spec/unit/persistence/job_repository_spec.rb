@@ -41,7 +41,8 @@ RSpec.describe Challenge::Persistence::JobRepository do
 
   it "stops returning a job once it has been completed" do
     create(run_at: now)
-    repository.mark_completed("job-1", now + 1, claim_token: repository.claim_next(now).claim_token)
+    repository.claim_next(now)
+    repository.mark_completed("job-1", now + 1)
 
     expect(repository.due(now + 1)).to be_empty
     expect(repository.find("job-1")).to be_completed
@@ -49,7 +50,8 @@ RSpec.describe Challenge::Persistence::JobRepository do
 
   it "stops returning a job once it has failed" do
     create(run_at: now)
-    repository.mark_failed("job-1", now + 1, claim_token: repository.claim_next(now).claim_token)
+    repository.claim_next(now)
+    repository.mark_failed("job-1", now + 1)
 
     expect(repository.due(now + 1)).to be_empty
     expect(repository.find("job-1")).to be_failed
@@ -57,7 +59,8 @@ RSpec.describe Challenge::Persistence::JobRepository do
 
   it "records when a job last changed" do
     create(run_at: now)
-    repository.mark_completed("job-1", now + 1, claim_token: repository.claim_next(now).claim_token)
+    repository.claim_next(now)
+    repository.mark_completed("job-1", now + 1)
 
     expect(repository.find("job-1").updated_at).to eq(now + 1)
   end

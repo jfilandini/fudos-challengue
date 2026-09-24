@@ -32,12 +32,12 @@ module Challenge
             id: job.product_id, name: job.product_name, created_at: now,
             requested_by_user_id: job.requested_by_user_id
           )
-          @job_repository.mark_completed(job.id, now, claim_token: job.claim_token)
+          @job_repository.mark_completed(job.id, now)
         end
         true
       rescue StandardError => error
         warn "product job #{job.id} failed (#{error.class})"
-        @job_repository.mark_failed(job.id, @clock.now, claim_token: job.claim_token)
+        @job_repository.mark_failed(job.id, @clock.now)
         false
       end
     end

@@ -48,8 +48,8 @@ RSpec.describe "Product creation idempotency" do
   it "does not restart failed jobs on replay" do
     submit
     original = json_body
-    claim = container.job_repository.claim_next(container.clock.now)
-    container.job_repository.mark_failed(original.fetch("job_id"), container.clock.now, claim_token: claim.claim_token)
+    container.job_repository.claim_next(container.clock.now)
+    container.job_repository.mark_failed(original.fetch("job_id"), container.clock.now)
     submit
     expect(json_body).to eq(original)
     expect(container.job_repository.find(original.fetch("job_id"))).to be_failed

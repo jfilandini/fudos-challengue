@@ -30,10 +30,13 @@ module Challenge
               "ON products (requested_by_user_id, created_at DESC, id DESC)"
             )
             job_columns = @connection.execute("PRAGMA table_info(jobs)").map { |row| row["name"] }
-            %w[idempotency_key claim_token].each do |column|
+            %w[idempotency_key].each do |column|
               unless job_columns.include?(column)
                 @connection.execute("ALTER TABLE jobs ADD COLUMN #{column} TEXT")
               end
+            end
+            if job_columns.include?("claim_token")
+              @connection.execute("ALTER TABLE jobs DROP COLUMN claim_token")
             end
             @connection.execute(
               "CREATE UNIQUE INDEX IF NOT EXISTS index_jobs_on_requester_and_idempotency_key " \

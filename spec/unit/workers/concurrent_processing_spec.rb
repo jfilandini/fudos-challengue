@@ -80,7 +80,6 @@ RSpec.describe "Independent job processors" do
       database = connect(path)
       jobs = Challenge::Persistence::JobRepository.new(database)
       expect(jobs.find("job-0")).to be_in_progress
-      expect(jobs.find("job-0").claim_token).not_to be_nil
       expect(processor(database).call).to eq(0)
       expect(database.execute("SELECT * FROM products")).to be_empty
       database.close

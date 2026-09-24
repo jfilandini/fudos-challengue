@@ -19,7 +19,7 @@ RSpec.describe "GET /jobs/{id}" do
     expect(json_body).to include("status" => "pending", "product_id" => created["product_id"])
   end
 
-  it "exposes a claimed job as in_progress without exposing its claim token" do
+  it "exposes a claimed job as in_progress" do
     created = enqueue_product
     container.job_repository.claim_next(container.clock.now)
     read_job(created["job_id"])

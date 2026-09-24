@@ -24,20 +24,28 @@ RSpec.describe "Job claiming" do
     create("one")
     claimed = jobs.claim_next(now)
     expect(claimed).to be_in_progress
-    expect(claimed.claim_token).not_to be_nil
     expect(jobs.find("one")).to eq(claimed)
     expect(jobs.claim_next(now)).to be_nil
   end
 
-  it "rejects another claim's completion or failure and preserves terminal states" do
+  it "only completes or fails in_progress jobs and preserves terminal states" do
     create("one")
-    claimed = jobs.claim_next(now)
-    expect { jobs.mark_completed("one", now, claim_token: "wrong") }
-      .to raise_error(Challenge::Persistence::JobRepository::ClaimLost)
-    expect(jobs.mark_failed("one", now, claim_token: "wrong")).to be(false)
-    expect(jobs.find("one")).to be_in_progress
-    jobs.mark_completed("one", now, claim_token: claimed.claim_token)
-    expect(jobs.mark_failed("one", now, claim_token: claimed.claim_token)).to be(false)
+    expect { jobs.mark_completed("one", now) }
+      .to raise_error(Challenge::Persistence::JobRepository::InvalidTransition)
+    expect(jobs.mark_failed("one", now)).to be(false)
+    expect(jobs.find("one")).to be_pending
+    jobs.claim_next(now)
+    jobs.mark_completed("one", now)
+    expect(jobs.mark_failed("one", now)).to be(false)
+    expect { jobs.mark_completed("one", now) }
+      .to raise_error(Challenge::Persistence::JobRepository::InvalidTransition)
     expect(jobs.find("one")).to be_completed
+
+    create("two")
+    jobs.claim_next(now)
+    expect(jobs.mark_failed("two", now)).to be(true)
+    expect { jobs.mark_completed("two", now) }
+      .to raise_error(Challenge::Persistence::JobRepository::InvalidTransition)
+    expect(jobs.find("two")).to be_failed
   end
 end

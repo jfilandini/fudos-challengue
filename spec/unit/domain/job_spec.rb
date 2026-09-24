@@ -2,7 +2,7 @@
 
 RSpec.describe Challenge::Domain::Job do
   def job_with(status)
-    described_class.new(id: "job", product_id: "product", product_name: "Laptop", status: status, requested_by_user_id: nil, claim_token: nil,
+    described_class.new(id: "job", product_id: "product", product_name: "Laptop", status: status, requested_by_user_id: nil,
                         run_at: Time.now.utc, created_at: Time.now.utc, updated_at: Time.now.utc)
   end
 
