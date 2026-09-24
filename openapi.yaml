@@ -160,6 +160,11 @@ paths:
       tags: [Jobs]
       operationId: getJob
       summary: Follow the progress of a product creation
+      description: >-
+        Jobs transition from pending to in_progress when atomically claimed,
+        then to completed or failed. updated_at records the latest transition.
+        An interrupted worker can leave a job in_progress indefinitely; these jobs
+        require investigation and are not automatically reclaimed or retried.
       security:
         - bearerAuth: []
       parameters:
@@ -343,11 +348,11 @@ components:
 
     JobStatus:
       type: string
-      enum: [pending, completed, failed]
+      enum: [pending, in_progress, completed, failed]
 
     Job:
       type: object
-      required: [id, product_id, status, created_at, requested_by_user_id]
+      required: [id, product_id, status, created_at, updated_at, requested_by_user_id]
       additionalProperties: false
       properties:
         requested_by_user_id:
@@ -362,6 +367,9 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/JobStatus'
+        updated_at:
+          type: string
+          format: date-time
         created_at:
           type: string
           format: date-time

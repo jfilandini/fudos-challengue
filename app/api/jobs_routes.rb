@@ -13,7 +13,8 @@ module Challenge
             product_id: job.product_id,
             requested_by_user_id: job.requested_by_user_id,
             status: job.status,
-            created_at: Support::Timestamp.serialize(job.created_at)
+            created_at: Support::Timestamp.serialize(job.created_at),
+            updated_at: Support::Timestamp.serialize(job.updated_at)
           )
         end
       end

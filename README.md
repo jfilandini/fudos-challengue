@@ -158,9 +158,38 @@ Existing jobs have null keys and remain processable, but cannot retroactively be
 matched to retries. Database setup adds the column and unique index to existing
 SQLite databases without dropping data.
 
-This protects HTTP request retries. It does not implement multi-worker job claiming
-or automatic retries of failed work; those remain separate concerns. The existing
-product primary key and product/job transaction continue to protect product writes.
+Request idempotency prevents duplicate submissions; atomic job claiming separately
+prevents workers from processing the same pending job. Failed or interrupted jobs
+are not automatically retried.
+
+## Job claiming and concurrent workers
+
+Jobs follow `pending → in_progress → completed` or `pending → in_progress → failed`.
+Each worker atomically claims one eligible job using a single SQLite
+`UPDATE ... RETURNING` statement. Selection is ordered by `run_at`, then `created_at`,
+then `id`; this prioritizes due jobs deterministically but does not guarantee the
+order in which concurrent workers finish. Each processing pass handles at most
+100 jobs to avoid an unbounded drain loop.
+
+The claim, including a private ownership token, commits before processing starts.
+Product insertion and job completion then share a separate transaction. Completion
+and failure updates require both the matching token and `in_progress` status,
+so stale updates cannot turn a completed job into a failed one. Processing errors
+roll back the product, attempt to mark the claimed job failed, and log the job ID
+and exception class.
+
+If a worker dies after claiming but before completion, the job remains
+`in_progress`, including across restarts. `GET /jobs/{id}` exposes its status and
+`updated_at` for investigation; the internal ownership token is not exposed.
+There is no automatic timeout, lease expiry, or retry endpoint. An old
+`in_progress` timestamp is a signal to investigate, not proof the worker is dead.
+Before any manual recovery, stop or verify termination of the owning worker and
+inspect the database; do not blindly reset active jobs to pending.
+
+The application still starts one worker thread by default. Independent application
+processes can safely claim jobs from the same local SQLite file, but SQLite still
+serializes writes, so more workers do not imply more write throughput. This does
+not introduce a distributed database or a multi-host deployment configuration.
 
 ## Request attribution
 

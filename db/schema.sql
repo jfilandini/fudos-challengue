@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   product_id TEXT NOT NULL,
   product_name TEXT NOT NULL,
   idempotency_key TEXT,
+  claim_token TEXT,
   requested_by_user_id TEXT,
   status TEXT NOT NULL,
   run_at TEXT NOT NULL,

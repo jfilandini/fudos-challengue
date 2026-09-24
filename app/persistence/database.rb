@@ -26,8 +26,10 @@ module Challenge
               end
             end
             job_columns = @connection.execute("PRAGMA table_info(jobs)").map { |row| row["name"] }
-            unless job_columns.include?("idempotency_key")
-              @connection.execute("ALTER TABLE jobs ADD COLUMN idempotency_key TEXT")
+            %w[idempotency_key claim_token].each do |column|
+              unless job_columns.include?(column)
+                @connection.execute("ALTER TABLE jobs ADD COLUMN #{column} TEXT")
+              end
             end
             @connection.execute(
               "CREATE UNIQUE INDEX IF NOT EXISTS index_jobs_on_requester_and_idempotency_key " \
@@ -42,8 +44,8 @@ module Challenge
         @monitor.synchronize { @connection.execute(sql, parameters) }
       end
 
-      def transaction(&block)
-        @monitor.synchronize { @connection.transaction(&block) }
+      def transaction(mode: :deferred, &block)
+        @monitor.synchronize { @connection.transaction(mode, &block) }
       end
 
       def close

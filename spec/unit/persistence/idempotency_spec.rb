@@ -22,7 +22,8 @@ RSpec.describe "Persistent idempotency" do
         .to raise_error(Challenge::UseCases::EnqueueProductCreation::IdempotencyConflict)
       expect do
         database.execute(
-          "INSERT INTO jobs SELECT ?, product_id, product_name, idempotency_key, requested_by_user_id, " \
+          "INSERT INTO jobs (id, product_id, product_name, idempotency_key, requested_by_user_id, status, run_at, created_at, updated_at) " \
+          "SELECT ?, product_id, product_name, idempotency_key, requested_by_user_id, " \
           "status, run_at, created_at, updated_at FROM jobs WHERE id = ?", ["duplicate", original.id]
         )
       end.to raise_error(SQLite3::ConstraintException)

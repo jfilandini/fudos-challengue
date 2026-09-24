@@ -7,7 +7,7 @@ RSpec.describe Challenge::Persistence::Database do
     Dir.mktmpdir do |directory|
       path = File.join(directory, "legacy.sqlite3")
       old = SQLite3::Database.new(path)
-      schema = File.read(described_class::SCHEMA_PATH).gsub("  requested_by_user_id TEXT,\n", "").gsub("  idempotency_key TEXT,\n", "")
+      schema = File.read(described_class::SCHEMA_PATH).gsub("  requested_by_user_id TEXT,\n", "").gsub("  idempotency_key TEXT,\n", "").gsub("  claim_token TEXT,\n", "")
       old.execute_batch(schema)
       timestamp = "2026-09-18T12:00:00.000Z"
       old.execute("INSERT INTO products VALUES (?, ?, ?)", ["existing", "Coffee", timestamp])
