@@ -15,6 +15,7 @@ module Challenge
       validate_responses = validate_responses?(container.config)
 
       Rack::Builder.app do
+        use Middleware::RequestLogging
         use Rack::Deflater
         use Rack::Static,
             root: File.dirname(OPENAPI_PATH),

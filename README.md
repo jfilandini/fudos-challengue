@@ -131,21 +131,30 @@ a la conexión entre threads; los locks de SQLite coordinan procesos distintos.
 El stack se construye en [app/application.rb](app/application.rb), en este orden
 de entrada. Las respuestas regresan en sentido inverso:
 
-1. **`Rack::Deflater`**: comprime la respuesta cuando el cliente acepta gzip.
-2. **`Rack::Static`**: sirve únicamente `/openapi.yaml` y `/AUTHORS`, sin pasar por
+1. **`Middleware::RequestLogging`**: registra la entrada y finalización de cada
+   request en stdout, como JSON, con un ID generado por el servidor. Incluye método,
+   ruta normalizada, timestamp y, al finalizar, estado HTTP y duración en milisegundos.
+2. **`Rack::Deflater`**: comprime la respuesta cuando el cliente acepta gzip.
+3. **`Rack::Static`**: sirve únicamente `/openapi.yaml` y `/AUTHORS`, sin pasar por
    Sinatra. El contrato lleva `no-store, no-cache, must-revalidate`; AUTHORS lleva
    `public, max-age=86400`. También soporta solicitudes `HEAD`.
-3. **`Committee::Middleware::ResponseValidation`**: verifica las respuestas contra
+4. **`Committee::Middleware::ResponseValidation`**: verifica las respuestas contra
    OpenAPI en desarrollo y tests. Está deshabilitado en producción.
-4. **`Middleware::Authentication`**: valida el JWT en rutas protegidas y deja la
+5. **`Middleware::Authentication`**: valida el JWT en rutas protegidas y deja la
    identidad verificada en el entorno Rack. Rechaza solicitudes sin token válido
    antes de validar su payload.
-5. **`Committee::Middleware::RequestValidation`**: valida las entradas contra
+6. **`Committee::Middleware::RequestValidation`**: valida las entradas contra
    OpenAPI antes de ejecutar las rutas. Permanece activo en producción.
-6. **Rutas Sinatra**: invocan los casos de uso y producen las respuestas JSON.
+7. **Rutas Sinatra**: invocan los casos de uso y producen las respuestas JSON.
 
 Los archivos estáticos terminan su recorrido en `Rack::Static`; su respuesta sigue
 pasando por el middleware exterior de compresión.
+
+Los logs no incluyen cuerpos, headers, query strings, IPs, usuarios, identificadores
+de recursos ni mensajes de excepciones. Las rutas dinámicas se registran como
+`/products/:id` o `/jobs/:id`; las desconocidas, como `unmatched`. La duración mide
+la llamada al stack Rack, no la transmisión del body al cliente ni la ejecución
+posterior del job. También se registran respuestas estáticas y rechazos de autenticación.
 
 ## Autenticación y aislamiento por usuario
 
@@ -229,6 +238,13 @@ hay que confirmar que el worker original terminó; una fecha antigua no lo demue
 
 ## Mejoras futuras
 
+- **PostgreSQL en producción:** evaluar el reemplazo de SQLite por PostgreSQL como
+  servicio separado, en otro contenedor o en un servicio administrado. Esto permitiría
+  compartir una base centralizada entre varias instancias de la API y los workers,
+  con mayor concurrencia de escritura. La migración debe adaptar los repositorios y
+  la reserva de jobs, preservando las transacciones y el índice único de idempotencia.
+  La implementación actual mantiene SQLite con almacenamiento persistente.
+
 - **Active Record y migraciones:** evaluar Active Record como reemplazo del wrapper
   y los repositorios SQL para simplificar el mapeo y mantenimiento de persistencia.
   Es una alternativa de acceso a datos, no un reemplazo de SQLite. Mantener los
@@ -249,7 +265,7 @@ hay que confirmar que el worker original terminó; una fecha antigua no lo demue
   para detener nuevas reservas y terminar el trabajo activo dentro de un plazo.
   Validar rangos de configuración y rechazar secretos vacíos al iniciar.
 
-- **Observabilidad:** incorporar logs estructurados, trazas y métricas, por ejemplo
+- **Observabilidad:** ampliar los logs HTTP estructurados con trazas y métricas, por ejemplo
   mediante New Relic. Vincular la solicitud HTTP con el job y medir latencia,
   errores, backlog, demora de ejecución y contención de la base. No registrar
   contraseñas ni tokens; no usar IDs individuales como etiquetas de métricas.
