@@ -9,11 +9,6 @@ RSpec.describe "POST /auth/login" do
     expect(last_response.status).to eq(200)
     expect(json_body).to include("token_type" => "Bearer", "expires_in" => 3600)
     expect(json_body["token"]).to be_a(String)
-  end
-
-  it "issues a token the api can read back" do
-    post_json "/auth/login", username: "admin", password: "password123"
-
     expect(container.jwt_encoder.decode(json_body["token"])["sub"]).to eq("1")
   end
 

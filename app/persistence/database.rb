@@ -18,30 +18,6 @@ module Challenge
         @monitor.synchronize do
           @connection.transaction(:immediate) do
             @connection.execute_batch(File.read(SCHEMA_PATH))
-            # Existing databases predate request attribution; preserve their rows.
-            %w[jobs products].each do |table|
-              columns = @connection.execute("PRAGMA table_info(#{table})").map { |row| row["name"] }
-              unless columns.include?("requested_by_user_id")
-                @connection.execute("ALTER TABLE #{table} ADD COLUMN requested_by_user_id TEXT")
-              end
-            end
-            @connection.execute(
-              "CREATE INDEX IF NOT EXISTS index_products_on_requester_and_order " \
-              "ON products (requested_by_user_id, created_at DESC, id DESC)"
-            )
-            job_columns = @connection.execute("PRAGMA table_info(jobs)").map { |row| row["name"] }
-            %w[idempotency_key].each do |column|
-              unless job_columns.include?(column)
-                @connection.execute("ALTER TABLE jobs ADD COLUMN #{column} TEXT")
-              end
-            end
-            if job_columns.include?("claim_token")
-              @connection.execute("ALTER TABLE jobs DROP COLUMN claim_token")
-            end
-            @connection.execute(
-              "CREATE UNIQUE INDEX IF NOT EXISTS index_jobs_on_requester_and_idempotency_key " \
-              "ON jobs (requested_by_user_id, idempotency_key)"
-            )
           end
         end
         self

@@ -37,28 +37,27 @@ RSpec.describe "Demo seeding" do
       database = Challenge::Persistence::Database.new(path).setup!
       users = Challenge::Persistence::UserRepository.new(database)
       unrelated = users.create(username: "existing", password: "existing-password", now: Time.now.utc)
-      primary = users.create(username: "reviewer", password: "keep-this-password", now: Time.now.utc)
+      users.create(username: "reviewer", password: "keep-this-password", now: Time.now.utc)
       database.close
 
       run_seeds(path, enabled: "true", username: "reviewer")
       database = Challenge::Persistence::Database.new(path)
       users = Challenge::Persistence::UserRepository.new(database)
-      secondary = users.find_by_username("reviewer-demo")
+      secondary = users.find_by_username("testuser")
       expect(users.find_by_username("reviewer").authenticate?("keep-this-password")).to be(true)
       expect(secondary.authenticate?("demo-password")).to be(true)
       expect(secondary.id).not_to eq(unrelated.id)
       expect(database.execute("SELECT requested_by_user_id, COUNT(*) AS n FROM products GROUP BY requested_by_user_id"))
         .to match_array([
-          { "requested_by_user_id" => primary.id.to_s, "n" => 25 },
           { "requested_by_user_id" => secondary.id.to_s, "n" => 25 }
         ])
-      id = format("mock-user-%d-product-01", primary.id)
+      id = format("mock-user-%d-product-01", secondary.id)
       database.execute("UPDATE products SET name = ? WHERE id = ?", ["Edited name", id])
       database.close
 
       run_seeds(path, enabled: "true", username: "reviewer")
       database = Challenge::Persistence::Database.new(path)
-      expect(database.execute("SELECT COUNT(*) AS n FROM products").first["n"]).to eq(50)
+      expect(database.execute("SELECT COUNT(*) AS n FROM products").first["n"]).to eq(25)
       expect(database.execute("SELECT name FROM products WHERE id = ?", [id]).first["name"]).to eq("Edited name")
       expect(database.execute("SELECT COUNT(*) AS n FROM users").first["n"]).to eq(3)
       expect(database.execute("SELECT * FROM jobs")).to be_empty

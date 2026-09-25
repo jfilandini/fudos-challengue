@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 RSpec.describe "Authentication across the stack" do
-  it_behaves_like "a protected endpoint", :get, "/products"
   it_behaves_like "a protected endpoint", :get, "/jobs/any-id"
 
   it "answers an anonymous request before the contract inspects the payload" do

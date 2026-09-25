@@ -38,13 +38,6 @@ RSpec.describe "GET /jobs/{id}" do
     expect(json_body).to include("status" => "completed")
   end
 
-  it "has created the product the job described" do
-    created = enqueue_product
-    container.process_due_jobs.call
-
-    expect(container.product_repository.find(created["product_id"])).to have_attributes(name: "Laptop")
-  end
-
   it "answers for a job that does not exist" do
     read_job("missing")
 

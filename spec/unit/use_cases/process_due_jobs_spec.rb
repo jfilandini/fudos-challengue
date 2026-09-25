@@ -14,26 +14,12 @@ RSpec.describe Challenge::UseCases::ProcessDueJobs do
     jobs.create(id: "job-1", product_id: "product-1", product_name: "Laptop", run_at: run_at, now: clock.now)
   end
 
-  it "creates the product a due job describes" do
-    enqueue
-
-    process_due_jobs.call
-
-    expect(products.find("product-1")).to have_attributes(name: "Laptop")
-  end
-
-  it "marks a processed job as completed" do
-    enqueue
-
-    process_due_jobs.call
-
-    expect(jobs.find("job-1")).to be_completed
-  end
-
-  it "reports how many jobs it processed" do
+  it "creates the product, completes the due job and counts it as processed" do
     enqueue
 
     expect(process_due_jobs.call).to eq(1)
+    expect(products.find("product-1")).to have_attributes(name: "Laptop")
+    expect(jobs.find("job-1")).to be_completed
   end
 
   it "leaves a job untouched until its delay has elapsed" do

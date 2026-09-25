@@ -88,13 +88,17 @@ RSpec.describe "Meta endpoints" do
         get path
         headers = last_response.headers
 
-        head path
+        # Inspect Rack headers directly; Rack::MockResponse recalculates the
+        # content length from the empty HEAD body.
+        status, head_headers, body = app.call(Rack::MockRequest.env_for(path, method: "HEAD"))
 
-        expect(last_response.status).to eq(200)
-        expect(last_response.body).to be_empty
+        expect(status).to eq(200)
+        expect(body.to_a).to be_empty
         %w[content-type content-length cache-control last-modified].each do |name|
-          expect(last_response.headers[name]).to eq(headers.fetch(name))
+          expect(head_headers[name]).to eq(headers.fetch(name))
         end
+      ensure
+        body.close if body.respond_to?(:close)
       end
     end
 

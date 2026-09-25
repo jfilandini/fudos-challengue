@@ -1,25 +1,47 @@
-# Products API
+# Products API — Fudo Challenge
 
-A Rack application in Ruby, without Rails, exposing a JSON API with authentication,
-asynchronous product creation and product querying.
+API JSON en Ruby, construida con Rack y Sinatra, sin Rails. Permite autenticarse,
+solicitar la creación asíncrona de productos y consultar únicamente los recursos
+del usuario autenticado. El contrato de la API se define en [openapi.yaml](openapi.yaml).
 
-The OpenAPI contract in [`openapi.yaml`](openapi.yaml) is written first and enforced at
-runtime: every request is validated against it before reaching a route.
+## Cómo levantar el proyecto
 
-## Requirements
+### Con Docker
 
-Either Docker, or Ruby 3.2.2 with Bundler.
-
-## Running with Docker
+Requisitos: Docker y Docker Compose. Desde la raíz del repositorio:
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
-The API listens on <http://localhost:9292>. The schema is created and a demo user seeded
-on every boot, and the SQLite file lives in a named volume so data survives a restart.
+La API queda disponible en <http://localhost:9292>. Al iniciar, el contenedor
+inicializa el esquema y ejecuta los seeds antes de levantar Puma. SQLite persiste
+en `./data/production.sqlite3`, mediante el bind mount `./data:/data`, por lo que
+los datos sobreviven a los reinicios. `data/` está excluido de la imagen Docker.
 
-## Running locally
+Para iniciar con datos de prueba:
+
+```bash
+SEED_MOCK_PRODUCTS=true docker compose up --build
+```
+
+| Usuario | Contraseña por defecto | Datos iniciales |
+| --- | --- | --- |
+| `admin` | `password123` | Sin productos de ejemplo |
+| `testuser` | `password123` | 25 productos, solo con `SEED_MOCK_PRODUCTS=true` |
+
+Ambos usuarios tienen los mismos permisos: `admin` es un nombre, no un rol especial.
+Los seeds no borran datos ni cambian contraseñas existentes. Admin empieza vacío
+solo en una base nueva. Los productos de ejemplo se insertan directamente, sin
+crear jobs; repetir el seed conserva los existentes y repone los que falten.
+
+`SEED_USERNAME` y `SEED_PASSWORD` permiten cambiar las credenciales iniciales.
+Con datos de prueba habilitados, `SEED_USERNAME` debe ser distinto de `testuser`;
+la contraseña configurada se usa para ambas cuentas nuevas.
+
+### Sin Docker
+
+Requisitos: Ruby 3.2.2 y Bundler.
 
 ```bash
 bundle install
@@ -27,270 +49,207 @@ bundle exec rake db:setup db:seed
 bundle exec puma -C config/puma.rb
 ```
 
-With `RACK_ENV` unset, both Puma and the application default to `development`,
-so these commands work without setting `JWT_SECRET`. The development signing
-secret is for local use only. For an explicit production launch, set
-`RACK_ENV=production` and provide `JWT_SECRET`; startup fails if the secret is
-missing. Docker explicitly sets `RACK_ENV=production` and Compose supplies its
-configured secret.
-
-## Credentials
-
-The seeded user is `admin` / `password123`. Override with `SEED_USERNAME` and
-`SEED_PASSWORD` before seeding.
-
-To add optional demo products through the same seed script:
+Para agregar los datos de prueba localmente:
 
 ```bash
 SEED_MOCK_PRODUCTS=true bundle exec rake db:seed
-# Or seed on Docker startup:
-SEED_MOCK_PRODUCTS=true docker compose up --build
 ```
 
-This finds or creates the configured seed user and a second user named
-`<SEED_USERNAME>-demo` (`admin` and `admin-demo` by default), then adds 25 products
-for each, using their actual database IDs. New users receive `SEED_PASSWORD`
-(`password123` by default); existing users' passwords are not changed. Stable
-product IDs make repeat runs skip existing products without overwriting edits.
-Deleted mock products are recreated when seeding is enabled again. The products
-are inserted directly; no asynchronous jobs are created. Mock seeding is disabled
-by default and is intended for local testing and demonstrations.
+El entorno local usa `development` y guarda SQLite en `db/development.sqlite3`.
+Docker usa `production`; Compose proporciona un secreto JWT de demostración.
+Para un despliegue real, configurar un `JWT_SECRET` propio y credenciales adecuadas.
+Fuera de Compose, iniciar con `RACK_ENV=production` requiere definir `JWT_SECRET`.
 
-## Tests
+### Probar la API
 
 ```bash
 bundle exec rspec
 ```
 
-Unit specs cover use cases, repositories and middleware without HTTP. Integration specs
-drive the full Rack stack. No test waits for the creation delay.
+La suite cubre contratos HTTP, autenticación, aislamiento por usuario, idempotencia,
+transacciones y workers concurrentes, incluyendo la interrupción de un proceso.
+Los tests de demora usan un reloj controlado para evitar esperar cinco segundos.
+La imagen Docker de ejecución no incluye las dependencias de tests.
 
-## Endpoints
+También se puede importar [postman_collection.json](postman_collection.json).
+La colección usa `testuser` por defecto: habilitar los datos de prueba y ejecutar
+primero el login, que guarda el token. La creación guarda los identificadores del
+job y del producto para las consultas siguientes.
 
-| Method | Path | Auth | Purpose |
+## Funcionalidades y endpoints
+
+| Método | Ruta | Autenticación | Función |
 | --- | --- | --- | --- |
-| POST | `/auth/login` | – | Exchange credentials for a bearer token |
-| POST | `/products` | Bearer | Request an asynchronous product creation |
-| GET | `/products` | Bearer | List the products that exist |
-| GET | `/products/{id}` | Bearer | Read one product |
-| GET | `/jobs/{id}` | Bearer | Follow the progress of a creation |
-| GET | `/health` | – | Liveness probe |
-| GET | `/openapi.yaml` | – | The contract, never cached |
-| GET | `/AUTHORS` | – | Authorship, cached for 24 hours |
+| POST | `/auth/login` | No | Obtener un JWT con usuario y contraseña |
+| POST | `/products` | Bearer JWT | Solicitar una creación con `Idempotency-Key` |
+| GET | `/products` | Bearer JWT | Listar los productos propios con paginación |
+| GET | `/products/{id}` | Bearer JWT | Consultar un producto propio |
+| GET | `/jobs/{id}` | Bearer JWT | Consultar el estado de una solicitud propia |
+| GET | `/health` | No | Comprobar que la API responde |
+| GET | `/openapi.yaml` | No | Descargar el contrato estático, sin caché |
+| GET | `/AUTHORS` | No | Consultar la autoría, con caché por 24 horas |
 
-Responses are gzipped whenever the client sends `Accept-Encoding: gzip`.
+El listado admite `page` (por defecto 1) y `per_page` (por defecto 20, máximo 100).
+Devuelve `products` y `pagination`, con página, tamaño, total y cantidad de páginas.
+Ordena por `created_at DESC, id DESC`; una página fuera de rango devuelve una lista
+vacía. Nuevos productos pueden desplazar resultados entre consultas sucesivas.
 
-## Product pagination
+## Arquitectura hexagonal
 
-`GET /products?page=1&per_page=20` returns only completed products, ordered by
-`created_at` descending and then `id` descending for timestamp ties.
+El proyecto separa las reglas de aplicación de HTTP y del almacenamiento.
+Los casos de uso reciben sus dependencias por constructor; los contratos entre
+objetos se expresan mediante métodos de Ruby, sin interfaces formales.
 
-- `page`: integer from 1 to 2147483647, defaults to 1.
-- `per_page`: integer from 1 to 100, defaults to 20.
-- Invalid values return `400` with error code `invalid_request`.
-- Pages beyond the last page return `200` with an empty `products` array.
-- An empty collection has `total: 0` and `total_pages: 0`.
-
-```bash
-curl -s "$BASE/products?page=2&per_page=10" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-```json
-{
-  "products": [],
-  "pagination": { "page": 2, "per_page": 10, "total": 0, "total_pages": 0 }
-}
-```
-
-The response keeps the `products` array and adds `pagination`. Clients that previously
-expected all products in one request must now iterate over pages. The page and total
-are read in one database transaction, but separate HTTP requests do not share a
-snapshot: newly created products can shift the contents of subsequent pages.
-
-### Scaling to larger datasets
-
-Offset pagination with exact totals is a simplicity trade-off for this challenge.
-As the dataset grows, computing `COUNT(*)` on every request can become expensive,
-and deep pages require the database to skip increasing numbers of rows. Returning
-a next-page number alone would not remove the cost of large offsets.
-
-For larger datasets, prefer cursor (keyset) pagination using the existing stable
-order `(created_at DESC, id DESC)` and a matching composite index. An opaque cursor
-would identify the last returned product's timestamp and ID, allowing the next
-query to seek after that pair instead of using `OFFSET`. Fetching `per_page + 1`
-rows would determine `has_more`; return at most `per_page` products and a
-`next_cursor` when another page is available, without computing `total` or
-`total_pages`. Clients would follow the cursor rather than jump to a page number.
-This is a future alternative; the current API still uses the page-based contract
-documented above.
-
-## The asynchronous flow
-
-```bash
-BASE=http://localhost:9292
-
-TOKEN=$(curl -s -X POST "$BASE/auth/login" \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"password123"}' | ruby -rjson -e 'puts JSON.parse(STDIN.read)["token"]')
-
-curl -s -X POST "$BASE/products" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000' \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Laptop"}'
-# => 202 {"job_id":"...","product_id":"...","status":"pending"}
-
-curl -s "$BASE/jobs/$JOB_ID"     -H "Authorization: Bearer $TOKEN"   # pending
-curl -s "$BASE/products/$PRODUCT_ID" -H "Authorization: Bearer $TOKEN"   # 404
-
-# after five seconds
-curl -s "$BASE/jobs/$JOB_ID"     -H "Authorization: Bearer $TOKEN"   # completed
-curl -s "$BASE/products/$PRODUCT_ID" -H "Authorization: Bearer $TOKEN"   # 200
-```
-
-A Postman collection covering the same flow is in
-[`postman_collection.json`](postman_collection.json); the login and creation requests
-capture the token and identifiers into collection variables automatically.
-
-## Idempotent product creation
-
-`POST /products` requires an `Idempotency-Key` header: a client-generated transaction
-ID of 1–128 ASCII letters, digits, underscores or hyphens (a UUID is suitable).
-Generate a new key for each intended creation and reuse it for retries. The key is
-scoped to the authenticated user's ID by a unique database index on
-`jobs(requested_by_user_id, idempotency_key)`, including concurrent submissions.
-
-- Same user, key and exact validated `name`: replay the original `202` acceptance
-  body and `Location`, without inserting another job or resetting its due time.
-- Same user and key, different `name`: `409` with code `idempotency_conflict`.
-- Missing or invalid key: `400`; rejected requests do not reserve a key.
-- Different users may reuse a key; different keys may create same-named products.
-
-Replays retain the original acceptance status `pending`, even if the job has since
-completed or failed. Follow `Location` (`GET /jobs/{id}`) to obtain current status.
-Replaying a failed job does not retry it. Keys survive restarts and have no automatic
-expiration; retain job records for as long as the idempotency guarantee is needed.
-Existing jobs have null keys and remain processable, but cannot retroactively be
-matched to retries. Database setup adds the column and unique index to existing
-SQLite databases without dropping data.
-
-Request idempotency prevents duplicate submissions; atomic job claiming separately
-prevents workers from processing the same pending job. Failed or interrupted jobs
-are not automatically retried.
-
-## Job claiming and concurrent workers
-
-Jobs follow `pending → in_progress → completed` or `pending → in_progress → failed`.
-Each worker atomically claims one eligible job using a single SQLite
-`UPDATE ... RETURNING` statement. Selection is ordered by `run_at`, then `created_at`,
-then `id`; this prioritizes due jobs deterministically but does not guarantee the
-order in which concurrent workers finish. Each processing pass handles at most
-100 jobs to avoid an unbounded drain loop.
-
-The claim commits before processing starts.
-Product insertion and job completion then share a separate transaction. Completion
-and failure updates require `in_progress` status, so terminal jobs cannot be
-changed to another terminal state through these methods. Processing errors
-roll back the product, attempt to mark the claimed job failed, and log the job ID
-and exception class.
-
-If a worker dies after claiming but before completion, the job remains
-`in_progress`, including across restarts. `GET /jobs/{id}` exposes its status and
-`updated_at` for investigation.
-There is no automatic timeout, lease expiry, or retry endpoint. An old
-`in_progress` timestamp is a signal to investigate, not proof the worker is dead.
-Before any manual recovery, stop or verify termination of the owning worker and
-inspect the database; do not blindly reset active jobs to pending.
-
-Claim tokens are intentionally omitted: atomic claiming selects only `pending`
-jobs, and this implementation never reassigns `in_progress` jobs. If recovery or
-reassignment is introduced, add a fresh ownership token (or claim generation) on
-every claim and require it on completion/failure updates within the product
-transaction. Otherwise an original worker that resumes after reassignment could
-interfere with the replacement worker. A database lock alone does not protect that
-interval because the claim transaction has already committed. Such tokens would
-not by themselves make external side effects idempotent.
-
-Database setup removes the obsolete `claim_token` column from existing databases
-while preserving jobs and their states. Stop processes running the old code before
-upgrading, since that code still expects the column to exist.
-
-The application still starts one worker thread by default. Independent application
-processes can safely claim jobs from the same local SQLite file, but SQLite still
-serializes writes, so more workers do not imply more write throughput. This does
-not introduce a distributed database or a multi-host deployment configuration.
-
-## Request attribution
-
-The JWT contains the user's ID as the string `sub` claim, not their username.
-The API takes that verified identity from the authentication middleware and saves
-it as `requested_by_user_id` on the creation job. The worker copies it to the
-product when processing that job, preserving who requested creation even though
-execution happens later. This field is internal and is not included in product
-or job responses. It is server-assigned; including it in a creation request is rejected.
-
-Database setup upgrades existing SQLite tables without dropping data. Previously
-stored jobs and products have a null requester because their original requester
-cannot be reconstructed. Pending legacy jobs remain processable. Ownership is enforced on product lists, pagination counts, individual products
-and jobs using the verified JWT subject. Another user's resource returns the same
-404 response as a missing resource. Legacy records with a null requester are
-inaccessible through these endpoints until ownership is explicitly assigned by an
-administrator outside the API. User IDs in query parameters or request bodies
-cannot override the authenticated identity. Protected responses use `Cache-Control:
-no-store` to prevent caching personalized data.
-
-## Production observability
-
-Before operating this API under high concurrency in production, add distributed
-tracing, structured logs and metrics collection, for example through an APM tool
-such as New Relic. No APM agent or telemetry exporter is currently integrated.
-
-Propagate a request/trace identifier from HTTP acceptance into the persisted job
-and link the worker's execution trace to it. Correlate logs using request ID, job
-ID and product ID; use the requester ID for attribution where access and retention
-policies allow. Do not log passwords, bearer tokens or JWT signing secrets.
-
-Track HTTP throughput, error rates and latency percentiles; pending/failed job
-counts; scheduling lag after `run_at`; job processing duration; database query
-latency and lock contention; and CPU/memory usage. Alert on sustained backlog,
-worker failures and latency/error thresholds. Keep metric labels low-cardinality:
-use route templates and status classes, not user, product or job IDs.
-
-## Configuration
-
-| Variable | Default | Purpose |
+| Parte | Ubicación | Responsabilidad |
 | --- | --- | --- |
-| `RACK_ENV` | `development` | Response validation runs outside production |
-| `DATABASE_PATH` | `db/development.sqlite3` | SQLite file, `:memory:` under test |
-| `JWT_SECRET` | development fallback | HS256 signing key, required in production |
-| `JWT_TTL_SECONDS` | `3600` | Token lifetime |
-| `PRODUCT_CREATION_DELAY_SECONDS` | `5` | Creation delay, `0` under test |
-| `WORKER_POLL_INTERVAL_SECONDS` | `0.5` | Worker loop interval |
-| `SEED_USERNAME` / `SEED_PASSWORD` | `admin` / `password123` | Seeded user |
+| Dominio | `app/domain/` | Representar usuarios, productos y jobs |
+| Casos de uso | `app/use_cases/` | Autenticar, encolar, procesar y consultar recursos |
+| Adaptador HTTP | `app/api/` | Traducir requests y resultados a HTTP/JSON con Sinatra |
+| Adaptador de persistencia | `app/persistence/` | Implementar repositorios y transacciones sobre SQLite |
+| Adaptador de ejecución | `app/workers/` | Invocar periódicamente el procesamiento de jobs |
+| Composición | `app/container.rb` | Construir y conectar las dependencias |
 
-## Design
+Por ejemplo, al recibir `POST /products`, `ProductsRoutes` llama a
+`EnqueueProductCreation` con el nombre, el usuario autenticado y la clave de
+idempotencia. El caso de uso programa el job mediante `JobRepository`, que lo
+guarda en SQLite. La ruta convierte el resultado en una respuesta `202 Accepted`.
 
-The application is organised as a hexagon: Sinatra is an inbound adapter, SQLite an
-outbound one, and the rules live in use cases that depend on neither. Creation is
-asynchronous through a jobs table drained by a worker thread.
+```text
+HTTP → ProductsRoutes → EnqueueProductCreation → JobRepository → SQLite
 
-### OpenAPI validation overhead
+ProductWorker → ProcessDueJobs → ProductRepository + JobRepository
+                                      └─ transacción compartida ─┘
+```
 
-The `committee` gem validates incoming requests against `openapi.yaml` before
-route execution. Response validation also runs in development and tests, but is
-disabled in production. Request validation remains enabled in production.
+El caso de uso no construye respuestas HTTP ni ejecuta SQL. `Database` aporta la
+conexión y actúa como unidad de trabajo: la inserción del producto y la finalización
+del job se confirman juntas o se revierten juntas. Un `Monitor` coordina el acceso
+a la conexión entre threads; los locks de SQLite coordinan procesos distintos.
 
-Runtime schema validation adds per-request processing and allocation overhead.
-Under high concurrency, this can affect latency and throughput; the impact depends
-on payload size, schema complexity and available resources. This project has not
-been load-tested, so Committee is a potential bottleneck, not a demonstrated
-scalability limit. Benchmark representative traffic and profile validation costs
-before changing this trade-off.
+## Capas de middleware
 
-If validation becomes a measured bottleneck, consider focused request validators
-for hot endpoints while keeping OpenAPI contract checks in CI and integration
-tests. Any replacement must preserve required-field, type, size and other input
-checks; removing runtime input validation entirely is not the intended optimization.
+El stack se construye en [app/application.rb](app/application.rb), en este orden
+de entrada. Las respuestas regresan en sentido inverso:
 
-[`SUMMARY.md`](SUMMARY.md) explains the decisions and their trade-offs in full.
+1. **`Rack::Deflater`**: comprime la respuesta cuando el cliente acepta gzip.
+2. **`Rack::Static`**: sirve únicamente `/openapi.yaml` y `/AUTHORS`, sin pasar por
+   Sinatra. El contrato lleva `no-store, no-cache, must-revalidate`; AUTHORS lleva
+   `public, max-age=86400`. También soporta solicitudes `HEAD`.
+3. **`Committee::Middleware::ResponseValidation`**: verifica las respuestas contra
+   OpenAPI en desarrollo y tests. Está deshabilitado en producción.
+4. **`Middleware::Authentication`**: valida el JWT en rutas protegidas y deja la
+   identidad verificada en el entorno Rack. Rechaza solicitudes sin token válido
+   antes de validar su payload.
+5. **`Committee::Middleware::RequestValidation`**: valida las entradas contra
+   OpenAPI antes de ejecutar las rutas. Permanece activo en producción.
+6. **Rutas Sinatra**: invocan los casos de uso y producen las respuestas JSON.
+
+Los archivos estáticos terminan su recorrido en `Rack::Static`; su respuesta sigue
+pasando por el middleware exterior de compresión.
+
+## Autenticación y aislamiento por usuario
+
+`POST /auth/login` recibe `username` y `password`. Las contraseñas se almacenan como
+hashes BCrypt. Si las credenciales son válidas, se emite un JWT firmado con HS256,
+con una vigencia predeterminada de una hora.
+
+El claim `sub` contiene el ID del usuario como texto, no su nombre. Para acceder a
+productos o jobs, el cliente envía `Authorization: Bearer <token>`. El middleware
+verifica la firma, la expiración y la presencia de un sujeto válido.
+
+La identidad se obtiene del token verificado; el cliente no elige el propietario.
+El job guarda `requested_by_user_id` y el worker lo copia al producto. Este campo
+es interno: no se incluye en las respuestas y no se admite en el payload de creación.
+
+Las consultas y los totales de paginación se filtran por ese ID. Consultar un
+producto o job ajeno devuelve `404`, igual que uno inexistente. Los registros sin
+propietario tampoco se exponen. Las respuestas que pasan la autenticación llevan
+`Cache-Control: no-store`.
+
+## Creación asíncrona e idempotencia
+
+Una solicitud de creación tiene esta forma:
+
+```http
+POST /products
+Authorization: Bearer <token>
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{"name":"Café"}
+```
+
+La API persiste un job `pending`, programado para cinco segundos después, y responde
+sin crear todavía el producto:
+
+```http
+HTTP/1.1 202 Accepted
+Location: /jobs/<job_id>
+Content-Type: application/json
+
+{"job_id":"<job_id>","product_id":"<product_id>","status":"pending"}
+```
+
+El worker consulta cada 0,5 segundos y procesa hasta 100 jobs por pasada. Los cinco
+segundos son la demora mínima: el polling y la carga pueden retrasar la disponibilidad.
+Mientras no se complete el job, consultar el producto devuelve `404`.
+
+La reserva de un job se realiza con un único `UPDATE ... RETURNING`: elige un
+`pending` elegible y lo pasa a `in_progress` de forma atómica. Prioriza `run_at`,
+`created_at` e `id`. Otro worker no puede reservar nuevamente ese mismo job pendiente.
+La reserva se confirma antes de comenzar el procesamiento.
+
+Luego, una transacción inserta el producto y marca el job como `completed`.
+Si falla, se revierte la transacción y se intenta marcar el job como `failed`.
+Con varios workers, el orden de reserva no garantiza el orden de finalización.
+La aplicación inicia un worker por proceso; SQLite sigue serializando las escrituras.
+
+### Reintentos de solicitudes
+
+`Idempotency-Key` es obligatorio: admite entre 1 y 128 letras ASCII, números,
+guiones o guiones bajos. Se genera una clave por creación y se reutiliza al reintentar.
+Un índice único sobre `jobs(requested_by_user_id, idempotency_key)` evita duplicados
+incluso ante solicitudes concurrentes.
+
+| Solicitud | Resultado |
+| --- | --- |
+| Mismo usuario, clave y nombre exacto | Repite el `202`, los IDs y `Location` originales; no crea otro job |
+| Mismo usuario y clave, distinto nombre | `409 idempotency_conflict` |
+| Clave ausente o inválida | `400 invalid_request` |
+| Otro usuario con la misma clave | Solicitud independiente |
+| Nueva clave con el mismo nombre | Nueva creación permitida |
+
+La respuesta repetida conserva `status: pending`, aunque el job ya haya terminado;
+`GET /jobs/{id}` informa el estado actual. Reenviar una solicitud fallida no reintenta
+su job. Las claves persisten con los jobs, sin expiración automática.
+
+Si un proceso muere después de reservar un job, este puede quedar en `in_progress`.
+Actualmente no hay recuperación ni reintentos automáticos. Antes de intervenir,
+hay que confirmar que el worker original terminó; una fecha antigua no lo demuestra.
+
+## Mejoras futuras
+
+- **Active Record y migraciones:** evaluar Active Record como reemplazo del wrapper
+  y los repositorios SQL para simplificar el mapeo y mantenimiento de persistencia.
+  Es una alternativa de acceso a datos, no un reemplazo de SQLite. Mantener los
+  casos de uso independientes del ORM y el índice único como garantía de idempotencia.
+  Agregar migraciones versionadas cuando sea necesario evolucionar bases existentes.
+  Hoy `db/schema.sql` define tablas e índices; el setup no migra esquemas antiguos.
+
+- **Recuperación de jobs y claim tokens:** si se agregan leases, timeouts y
+  reasignación, generar un token o una versión nueva en cada reserva. El worker debe
+  presentar ese valor al completar o fallar el job, dentro de la transacción que
+  crea el producto. Si perdió la reserva, la actualización debe fallar y revertir
+  la inserción. Esto evita que un worker anterior, que se reanuda tarde, modifique
+  el trabajo del nuevo propietario. El token no recupera jobs por sí mismo ni
+  vuelve idempotentes los efectos externos; hoy no hace falta para impedir reservas
+  duplicadas porque solo se reclaman jobs `pending` y no se reasignan los activos.
+
+- **Ciclo de vida y configuración:** conectar el apagado de Puma con el del worker
+  para detener nuevas reservas y terminar el trabajo activo dentro de un plazo.
+  Validar rangos de configuración y rechazar secretos vacíos al iniciar.
+
+- **Observabilidad:** incorporar logs estructurados, trazas y métricas, por ejemplo
+  mediante New Relic. Vincular la solicitud HTTP con el job y medir latencia,
+  errores, backlog, demora de ejecución y contención de la base. No registrar
+  contraseñas ni tokens; no usar IDs individuales como etiquetas de métricas.

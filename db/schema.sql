@@ -26,3 +26,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS index_jobs_on_status_and_run_at ON jobs (status, run_at);
 CREATE INDEX IF NOT EXISTS index_products_on_created_at ON products (created_at);
+
+CREATE INDEX IF NOT EXISTS index_products_on_requester_and_order
+  ON products (requested_by_user_id, created_at DESC, id DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS index_jobs_on_requester_and_idempotency_key
+  ON jobs (requested_by_user_id, idempotency_key);

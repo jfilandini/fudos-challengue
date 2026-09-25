@@ -1,0 +1,1907 @@
+{
+  "info": {
+    "_postman_id": "de49150a-6c8c-4b2a-ad98-142dc1e4325c",
+    "name": "Products API - Comprehensive Test Suite",
+    "description": "# Products API Test Suite\n\nComprehensive Postman collection for the **Products API** (Ruby/Sinatra/Rack Hexagonal Architecture).\n\n## Test Scenarios Covered:\n1. **Authentication (`/auth/login`)**: Credential validation, token issuance, enumeration defense, and schema violations.\n2. **Unauthorized Access**: Missing tokens, malformed signatures, forbidden schemes, and anonymous route shielding.\n3. **Client Gzip Compression (`Rack::Deflater`)**: Compression negotiation with `Accept-Encoding: gzip` vs uncompressed requests.\n4. **Product Creation & Asynchronous Lifecycle**: Deferred job scheduling (202 Accepted), immediate 404 access control (RN-01), job tracking (`/jobs/:id`), and materialized product retrieval.\n5. **Idempotency & Conflict Scenarios**: Transparent replay (CASO A), 409 conflict detection (CASO B / RN-03), key formatting rules, and server-side requester audit enforcement (RN-04).\n6. **Products Querying & Pagination**: Default & custom pagination, empty deep pages, and strict boundary validation.\n7. **Meta & Public Endpoints**: Service liveness (`/health`), live OpenAPI contract (`/openapi.yaml`), and authors file (`/AUTHORS`).\n\n## Getting Started\n- Run your local instance (e.g. `SEED_MOCK_PRODUCTS=true docker compose up --build`; the collection uses `testuser` / `password123` so admin stays untouched).\n- Import this collection into Postman.\n- Start by running **01. Authentication -> 01. Login - Success**, which automatically stores the Bearer token in the `{{token}}` collection variable.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9292",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "testuser",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "password123",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "active_idempotency_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "product_name",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Authentication",
+      "description": "Endpoints and test cases for user authentication and JWT token issuance.",
+      "item": [
+        {
+          "name": "01. Login - Success (Exchange Credentials for Token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Exchanges valid credentials (admin / password123) for a JWT bearer token. Automatically updates the collection variable `{{token}}`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains valid Bearer token structure\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"token\");",
+                  "    pm.expect(jsonData.token).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(jsonData).to.have.property(\"token_type\", \"Bearer\");",
+                  "    pm.expect(jsonData).to.have.property(\"expires_in\", 3600);",
+                  "    ",
+                  "    // Save token to collection variables for all subsequent authenticated requests",
+                  "    pm.collectionVariables.set(\"token\", jsonData.token);",
+                  "    console.log(\"Bearer token obtained and saved to collection variable 'token'\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. Login - Invalid Password (401 Unauthorized)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"wrong_password_123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Verifies that submitting an invalid password returns 401 Unauthorized with code `invalid_credentials`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error envelope matches contract with code 'invalid_credentials'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"code\", \"invalid_credentials\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"message\", \"Username or password is invalid\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Login - Unknown User (401 Unauthorized)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"ghost_user_999\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Validates that unknown usernames receive the exact same 401 error envelope as wrong passwords to prevent user enumeration."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Answers unknown user identically to wrong password (security hardening)\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"code\", \"invalid_credentials\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"message\", \"Username or password is invalid\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. Login - Missing Fields / Bad Request (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Validates that omitting required body properties (password) violates the OpenAPI schema and returns 400 Bad Request."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"OpenAPI validation error returned with code 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"code\", \"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02. Unauthorized Access Scenarios",
+      "description": "Comprehensive tests verifying authentication boundaries, token validation, and error envelopes.",
+      "item": [
+        {
+          "name": "01. Get Products - Missing Authorization Header (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Calls protected endpoint GET /products without Authorization header, verifying 401 Unauthorized."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns unauthorized code and descriptive message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"code\", \"unauthorized\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"message\", \"A valid bearer token is required\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. Get Products - Invalid / Malformed Bearer Token (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer malformed.invalid.token"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Calls GET /products with an invalid JWT signature/format, expecting 401 Unauthorized."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns code 'unauthorized'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Get Products - Non-Bearer Scheme (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Basic YWRtaW46cGFzc3dvcmQxMjM="
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Calls GET /products with HTTP Basic authentication instead of Bearer, expecting 401."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Rejects schemes other than Bearer\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. Get Job - Missing Authorization Header (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs/any-job-id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "any-job-id"
+              ]
+            },
+            "description": "Verifies that GET /jobs/{id} is strictly protected against unauthenticated callers."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns code 'unauthorized'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05. Create Product - Missing Authorization Header (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "unauth-test-key-1"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Unauthorized Attempt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Verifies that POST /products rejects anonymous requests before OpenAPI request validation."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Rejects anonymous creation before inspecting payload\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06. Unknown Route - Anonymous Request (401 Unauthorized)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/non-existent-route-xyz",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "non-existent-route-xyz"
+              ]
+            },
+            "description": "Authentication middleware protects all paths outside PUBLIC_PATHS. An anonymous call to an unknown route receives 401 instead of 404 to avoid information disclosure."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Does not disclose route absence to anonymous caller\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07. Unknown Route - Authenticated Request (404 Not Found)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/non-existent-route-xyz",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "non-existent-route-xyz"
+              ]
+            },
+            "description": "When authenticated, calling a non-existent endpoint reaches the router and returns standard 404 Not Found."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns canonical not_found error envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"code\", \"not_found\");",
+                  "    pm.expect(jsonData.error).to.have.property(\"message\", \"The requested resource does not exist\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03. Gzip Compression Scenarios",
+      "description": "Tests verifying HTTP compression behavior when the client requests `Accept-Encoding: gzip` vs uncompressed requests.",
+      "item": [
+        {
+          "name": "01. Health Check - With Accept-Encoding: gzip",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept-Encoding",
+                "value": "gzip"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Sends `Accept-Encoding: gzip` to verify Rack::Deflater compresses the response and sets `Content-Encoding: gzip`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response header Content-Encoding is gzip\", function () {",
+                  "    var contentEncoding = pm.response.headers.get(\"Content-Encoding\");",
+                  "    pm.expect(contentEncoding).to.be.a(\"string\").and.include(\"gzip\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response payload decompresses correctly to JSON\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.eql({\"status\": \"ok\"});",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. Health Check - Without Accept-Encoding (Identity / No Gzip)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept-Encoding",
+                "value": "identity"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Verifies that without `Accept-Encoding: gzip`, the response is returned uncompressed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is not compressed with gzip when client requests identity\", function () {",
+                  "    var contentEncoding = pm.response.headers.get(\"Content-Encoding\");",
+                  "    pm.expect(contentEncoding).to.be.oneOf([null, undefined, \"identity\"]);",
+                  "});",
+                  "",
+                  "pm.test(\"Payload is intact\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.eql({\"status\": \"ok\"});",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Get Products - With Accept-Encoding: gzip (Authenticated)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Accept-Encoding",
+                "value": "gzip"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Tests client-negotiated gzip compression on an authenticated JSON payload."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is compressed with gzip\", function () {",
+                  "    var contentEncoding = pm.response.headers.get(\"Content-Encoding\");",
+                  "    pm.expect(contentEncoding).to.be.a(\"string\").and.include(\"gzip\");",
+                  "});",
+                  "",
+                  "pm.test(\"Authenticated response contains Cache-Control no-store\", function () {",
+                  "    var cacheControl = pm.response.headers.get(\"Cache-Control\");",
+                  "    pm.expect(cacheControl).to.include(\"no-store\");",
+                  "});",
+                  "",
+                  "pm.test(\"Body parses valid products list structure\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"products\");",
+                  "    pm.expect(jsonData).to.have.property(\"pagination\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. OpenAPI Contract - With Accept-Encoding: gzip",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept-Encoding",
+                "value": "gzip"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/openapi.yaml",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "openapi.yaml"
+              ]
+            },
+            "description": "Tests client-negotiated gzip compression on the static OpenAPI contract."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Encoding is gzip\", function () {",
+                  "    var contentEncoding = pm.response.headers.get(\"Content-Encoding\");",
+                  "    pm.expect(contentEncoding).to.be.a(\"string\").and.include(\"gzip\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type is application/yaml\", function () {",
+                  "    var contentType = pm.response.headers.get(\"Content-Type\");",
+                  "    pm.expect(contentType).to.include(\"application/yaml\");",
+                  "});",
+                  "",
+                  "pm.test(\"YAML body contains OpenAPI specification root\", function () {",
+                  "    pm.expect(pm.response.text()).to.include(\"openapi: 3.0.3\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04. Product Creation & Async Lifecycle",
+      "description": "Tests covering asynchronous product creation, delayed materialization, job tracking, and resource queries.",
+      "item": [
+        {
+          "name": "01. Create Product - Enqueue Async Creation (202 Accepted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{active_idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{product_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Dispatches an asynchronous product creation request. Returns 202 Accepted immediately with job tracking location."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Generate a unique Idempotency-Key and fresh product name for this test flow",
+                  "var generatedKey = \"key-\" + pm.variables.replaceIn('{{$guid}}');",
+                  "var generatedName = \"Product \" + pm.variables.replaceIn('{{$randomWord}}') + \" \" + Math.floor(Math.random() * 10000);",
+                  "",
+                  "pm.collectionVariables.set(\"active_idempotency_key\", generatedKey);",
+                  "pm.collectionVariables.set(\"product_name\", generatedName);",
+                  "console.log(\"Initialized Idempotency-Key: \" + generatedKey + \", Name: \" + generatedName);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 202 Accepted\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Response carries job_id, product_id, and pending status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"job_id\");",
+                  "    pm.expect(jsonData).to.have.property(\"product_id\");",
+                  "    pm.expect(jsonData.status).to.eql(\"pending\");",
+                  "    ",
+                  "    // Save IDs for subsequent lifecycle requests",
+                  "    pm.collectionVariables.set(\"job_id\", jsonData.job_id);",
+                  "    pm.collectionVariables.set(\"product_id\", jsonData.product_id);",
+                  "    console.log(\"Created Job ID: \" + jsonData.job_id + \", Preassigned Product ID: \" + jsonData.product_id);",
+                  "});",
+                  "",
+                  "pm.test(\"Location header points to /jobs/{job_id}\", function () {",
+                  "    var location = pm.response.headers.get(\"Location\");",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(location).to.eql(\"/jobs/\" + jsonData.job_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. Get Product - Immediately After Creation (404 Not Found - RN-01)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}"
+              ]
+            },
+            "description": "Validates Business Rule RN-01: During the 5-second deferred processing delay, querying the product returns 404 Not Found."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found (Rule RN-01: Materialization Delay)\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Product is not visible before worker completes job\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"not_found\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"The product does not exist\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Get Job - Status Tracking (200 OK)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}"
+              ]
+            },
+            "description": "Tracks the lifecycle of the deferred job. Status will be 'pending', 'in_progress', or 'completed' depending on elapsed time."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Job exposes valid state machine status and timestamps\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get(\"job_id\"));",
+                  "    pm.expect(jsonData.product_id).to.eql(pm.collectionVariables.get(\"product_id\"));",
+                  "    pm.expect(jsonData.status).to.be.oneOf([\"pending\", \"in_progress\", \"completed\"]);",
+                  "    pm.expect(jsonData).to.have.property(\"created_at\");",
+                  "    pm.expect(jsonData).to.have.property(\"updated_at\");",
+                  "});",
+                  "",
+                  "pm.test(\"Private infrastructure details are filtered out\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).not.to.have.property(\"claim_token\");",
+                  "    pm.expect(jsonData).not.to.have.property(\"requested_by_user_id\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. Get Product - Read Materialized Product (200 OK / 404 if still pending)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}"
+              ]
+            },
+            "description": "Queries the materialized product once the worker finishes background creation (5s default delay)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// If 5+ seconds have elapsed or worker ran, product returns 200; if called immediately, returns 404",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test(\"Product is materialized with 200 OK\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.id).to.eql(pm.collectionVariables.get(\"product_id\"));",
+                  "        pm.expect(jsonData.name).to.eql(pm.collectionVariables.get(\"product_name\"));",
+                  "        pm.expect(jsonData).to.have.property(\"created_at\");",
+                  "    });",
+                  "    pm.test(\"Cache-Control is no-store\", function () {",
+                  "        pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\");",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Product is still pending processing (404 expected before 5s)\", function () {",
+                  "        pm.response.to.have.status(404);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05. Get Job - Non-Existent ID (404 Not Found)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Validates response when requesting a non-existent job ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns not_found code\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"not_found\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"The job does not exist\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06. Get Product - Non-Existent ID (404 Not Found)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Validates response when requesting a non-existent product ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns not_found code\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"not_found\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"The product does not exist\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05. Idempotency & Edge Cases",
+      "description": "Tests for transparent replay, 409 conflict detection, key format validation, and security invariants.",
+      "item": [
+        {
+          "name": "01. Idempotency - Transparent Replay (Same Key, Same Name -> 202)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{active_idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{product_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "CASO A (Documentación Funcional): Reintento transparente ante timeout de red. Reenviar la misma clave con el mismo nombre reproduce la respuesta 202 original."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 202 Accepted on Replay\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Replays original response exactly without creating duplicate job\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var expectedJobId = pm.collectionVariables.get(\"job_id\");",
+                  "    var expectedProductId = pm.collectionVariables.get(\"product_id\");",
+                  "    ",
+                  "    pm.expect(jsonData.job_id).to.eql(expectedJobId);",
+                  "    pm.expect(jsonData.product_id).to.eql(expectedProductId);",
+                  "    pm.expect(jsonData.status).to.eql(\"pending\");",
+                  "});",
+                  "",
+                  "pm.test(\"Location header matches original job location\", function () {",
+                  "    var location = pm.response.headers.get(\"Location\");",
+                  "    var expectedJobId = pm.collectionVariables.get(\"job_id\");",
+                  "    pm.expect(location).to.eql(\"/jobs/\" + expectedJobId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. Idempotency - Conflict / Reused Key with Different Name (409 Conflict)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{active_idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Conflicting Different Product Name\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "CASO B & Regla RN-03: Inmutabilidad de Transacción Idempotente. Si se reutiliza una clave existente con distinto nombre de producto, responde 409 Conflict."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409 Conflict\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test(\"Error envelope reports 'idempotency_conflict'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"idempotency_conflict\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Idempotency key was already used with a different product name\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Idempotency - Missing Idempotency-Key Header (400 Bad Request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Valid Product Name Without Header\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Omitting the mandatory `Idempotency-Key` header violates the OpenAPI contract and returns 400 Bad Request."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code is 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. Idempotency - Invalid Characters in Key (400 Bad Request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "invalid key with spaces!"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Product\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The OpenAPI pattern requires `^[A-Za-z0-9_-]+$`. Keys with spaces or special symbols are rejected with 400."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code is 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05. Validation - Empty Product Name (400 Bad Request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "empty-name-key-1"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Names must have minLength 1. An empty string is rejected with 400 Bad Request."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code is 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06. Validation - Forbidden Injected Requester Field (400 Bad Request - RN-04)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "inject-user-key-1"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Spoofed Product\",\n  \"requested_by_user_id\": \"999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Regla RN-04: Auditoría Forzosa por Servidor. El campo `requested_by_user_id` es inyectado por el backend desde el token JWT; clientes que intenten enviarlo son rechazados con 400."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Contract strictly forbids client-injected requester ID\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06. Products Querying & Pagination",
+      "description": "Tests verifying product catalog querying, offset pagination, boundaries, and validation.",
+      "item": [
+        {
+          "name": "01. List Products - Default Page (200 OK)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Lists the first page of completed products belonging to the authenticated user."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns products array and pagination envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"products\");",
+                  "    pm.expect(jsonData.products).to.be.an(\"array\");",
+                  "    pm.expect(jsonData).to.have.property(\"pagination\");",
+                  "    pm.expect(jsonData.pagination).to.have.property(\"page\", 1);",
+                  "    pm.expect(jsonData.pagination).to.have.property(\"per_page\", 20);",
+                  "    pm.expect(jsonData.pagination).to.have.property(\"total\");",
+                  "    pm.expect(jsonData.pagination).to.have.property(\"total_pages\");",
+                  "});",
+                  "",
+                  "pm.test(\"Product items do not leak internal requester ID\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.products.forEach(function (product) {",
+                  "        pm.expect(product).to.have.property(\"id\");",
+                  "        pm.expect(product).to.have.property(\"name\");",
+                  "        pm.expect(product).to.have.property(\"created_at\");",
+                  "        pm.expect(product).not.to.have.property(\"requested_by_user_id\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Cache-Control header is no-store\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. List Products - Custom Pagination (page=1, per_page=5)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products?page=1&per_page=5",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Validates custom `page` and `per_page` query parameters."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Pagination reflects custom batch size\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.pagination.page).to.eql(1);",
+                  "    pm.expect(jsonData.pagination.per_page).to.eql(5);",
+                  "    pm.expect(jsonData.products.length).to.be.at.most(5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. List Products - Out of Bounds Page (200 OK with Empty Array)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products?page=99999&per_page=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "99999"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Calling a page beyond available items returns an empty list without error, preserving total counts."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns empty products array while preserving totals\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.products).to.be.an(\"array\").and.be.empty;",
+                  "    pm.expect(jsonData.pagination.page).to.eql(99999);",
+                  "    pm.expect(jsonData.pagination).to.have.property(\"total\");",
+                  "    pm.expect(jsonData.pagination).to.have.property(\"total_pages\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. List Products - Invalid Page (page=0 -> 400 Bad Request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products?page=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Validates rejection of non-positive page numbers (minimum is 1)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code is 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05. List Products - Invalid Per Page (per_page=101 -> 400 Bad Request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products?per_page=101",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "per_page",
+                  "value": "101"
+                }
+              ]
+            },
+            "description": "Validates rejection when per_page exceeds maximum limit of 100."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code is 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06. List Products - Non-Numeric Page Parameter (400 Bad Request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/products?page=invalid_number",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "invalid_number"
+                }
+              ]
+            },
+            "description": "Rejects non-integer query string values."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code is 'invalid_request'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"invalid_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07. Meta & Public Endpoints",
+      "description": "Public meta endpoints: service health, contract documentation, and author metadata.",
+      "item": [
+        {
+          "name": "01. Health Check (200 OK)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Public liveness probe used by Docker and orchestrators."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Health status is 'ok'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.eql({\"status\": \"ok\"});",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. OpenAPI Specification (200 OK, No-Cache)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/openapi.yaml",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "openapi.yaml"
+              ]
+            },
+            "description": "Serves the exact OpenAPI contract uncached so consumers always inspect the latest version."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type is application/yaml\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/yaml\");",
+                  "});",
+                  "",
+                  "pm.test(\"Cache-Control forbids caching contract\", function () {",
+                  "    var cacheControl = pm.response.headers.get(\"Cache-Control\");",
+                  "    pm.expect(cacheControl).to.include(\"no-store\");",
+                  "    pm.expect(cacheControl).to.include(\"no-cache\");",
+                  "    pm.expect(cacheControl).to.include(\"must-revalidate\");",
+                  "    pm.expect(pm.response.headers.get(\"Pragma\")).to.eql(\"no-cache\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains OpenAPI specification content\", function () {",
+                  "    pm.expect(pm.response.text()).to.include(\"openapi: 3.0.3\");",
+                  "    pm.expect(pm.response.text()).to.include(\"title: Products API\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Authors (200 OK, Public 24h Cache)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/AUTHORS",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "AUTHORS"
+              ]
+            },
+            "description": "Exposes project authorship information with a 24-hour public cache directive."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type is text/plain\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/plain\");",
+                  "});",
+                  "",
+                  "pm.test(\"Cache-Control allows 24h public caching\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"public, max-age=86400\");",
+                  "});",
+                  "",
+                  "pm.test(\"Body includes author identification\", function () {",
+                  "    pm.expect(pm.response.text()).to.include(\"Juan Manuel Filandini\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
