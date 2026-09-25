@@ -1,0 +1,1 @@
+TCP (Transmission Control Protocol) es un protocolo de transporte confiable y ordenado. Establece la conexión mediante un handshake y garantiza la entrega de datos confirmando la recepción y reenviando los paquetes faltantes en caso de pérdida.
