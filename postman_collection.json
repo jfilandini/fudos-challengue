@@ -81,7 +81,7 @@
                 }
               }
             },
-            "description": "Exchanges valid credentials (admin / password123) for a JWT bearer token. Automatically updates the collection variable `{{token}}`."
+            "description": "Exchanges {{username}} / {{password}} (defaults: testuser / password123) for a JWT bearer token. Create testuser first with SEED_MOCK_PRODUCTS=true docker compose up --build, or locally with SEED_MOCK_PRODUCTS=true bundle exec rake db:seed. Update the collection credentials if you customized SEED_PASSWORD. Automatically updates the collection variable {{token}}."
           },
           "response": [],
           "event": [

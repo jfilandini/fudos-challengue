@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe "Job claiming" do
+RSpec.describe Challenge::Persistence::JobRepository, "job claiming and transitions" do
   let(:database) { build_database }
   let(:jobs) { Challenge::Persistence::JobRepository.new(database) }
   let(:now) { Time.utc(2026, 9, 18, 12) }
@@ -23,7 +23,7 @@ RSpec.describe "Job claiming" do
   it "commits in_progress and does not claim the same job twice" do
     create("one")
     claimed = jobs.claim_next(now)
-    expect(claimed).to be_in_progress
+    expect(claimed).to have_attributes(id: "one", status: "in_progress")
     expect(jobs.find("one")).to eq(claimed)
     expect(jobs.claim_next(now)).to be_nil
   end
@@ -47,5 +47,39 @@ RSpec.describe "Job claiming" do
     expect { jobs.mark_completed("two", now) }
       .to raise_error(Challenge::Persistence::JobRepository::InvalidTransition)
     expect(jobs.find("two")).to be_failed
+  end
+
+  it "holds back a job whose scheduled time is still in the future" do
+    create("job-1", run_at: now + 5)
+
+    expect(jobs.claim_next(now)).to be_nil
+    expect(jobs.find("job-1")).to be_pending
+    expect(jobs.claim_next(now + 5)).to have_attributes(id: "job-1", status: "in_progress")
+  end
+
+  it "does not claim a completed job" do
+    create("job-1", run_at: now)
+    jobs.claim_next(now)
+    jobs.mark_completed("job-1", now + 1)
+
+    expect(jobs.claim_next(now + 1)).to be_nil
+    expect(jobs.find("job-1")).to be_completed
+  end
+
+  it "does not claim a failed job" do
+    create("job-1", run_at: now)
+    jobs.claim_next(now)
+    jobs.mark_failed("job-1", now + 1)
+
+    expect(jobs.claim_next(now + 1)).to be_nil
+    expect(jobs.find("job-1")).to be_failed
+  end
+
+  it "records when a job last changed" do
+    create("job-1", run_at: now)
+    jobs.claim_next(now)
+    jobs.mark_completed("job-1", now + 1)
+
+    expect(jobs.find("job-1").updated_at).to eq(now + 1)
   end
 end

@@ -25,44 +25,4 @@ RSpec.describe Challenge::Persistence::JobRepository do
   it "returns nothing for an unknown job" do
     expect(repository.find("job-1")).to be_nil
   end
-
-  it "claims a job once its scheduled time has arrived" do
-    create(run_at: now)
-
-    expect(repository.claim_next(now)).to have_attributes(id: "job-1", status: "in_progress")
-  end
-
-  it "holds back a job whose scheduled time is still in the future" do
-    create(run_at: now + 5)
-
-    expect(repository.claim_next(now)).to be_nil
-    expect(repository.find("job-1")).to be_pending
-    expect(repository.claim_next(now + 5)).to have_attributes(id: "job-1", status: "in_progress")
-  end
-
-  it "does not claim a completed job" do
-    create(run_at: now)
-    repository.claim_next(now)
-    repository.mark_completed("job-1", now + 1)
-
-    expect(repository.claim_next(now + 1)).to be_nil
-    expect(repository.find("job-1")).to be_completed
-  end
-
-  it "does not claim a failed job" do
-    create(run_at: now)
-    repository.claim_next(now)
-    repository.mark_failed("job-1", now + 1)
-
-    expect(repository.claim_next(now + 1)).to be_nil
-    expect(repository.find("job-1")).to be_failed
-  end
-
-  it "records when a job last changed" do
-    create(run_at: now)
-    repository.claim_next(now)
-    repository.mark_completed("job-1", now + 1)
-
-    expect(repository.find("job-1").updated_at).to eq(now + 1)
-  end
 end
