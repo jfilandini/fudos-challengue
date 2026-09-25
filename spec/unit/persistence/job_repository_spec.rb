@@ -26,34 +26,35 @@ RSpec.describe Challenge::Persistence::JobRepository do
     expect(repository.find("job-1")).to be_nil
   end
 
-  it "considers a job due once its scheduled time has arrived" do
+  it "claims a job once its scheduled time has arrived" do
     create(run_at: now)
 
-    expect(repository.due(now).map(&:id)).to eq(["job-1"])
+    expect(repository.claim_next(now)).to have_attributes(id: "job-1", status: "in_progress")
   end
 
   it "holds back a job whose scheduled time is still in the future" do
     create(run_at: now + 5)
 
-    expect(repository.due(now)).to be_empty
-    expect(repository.due(now + 5).map(&:id)).to eq(["job-1"])
+    expect(repository.claim_next(now)).to be_nil
+    expect(repository.find("job-1")).to be_pending
+    expect(repository.claim_next(now + 5)).to have_attributes(id: "job-1", status: "in_progress")
   end
 
-  it "stops returning a job once it has been completed" do
+  it "does not claim a completed job" do
     create(run_at: now)
     repository.claim_next(now)
     repository.mark_completed("job-1", now + 1)
 
-    expect(repository.due(now + 1)).to be_empty
+    expect(repository.claim_next(now + 1)).to be_nil
     expect(repository.find("job-1")).to be_completed
   end
 
-  it "stops returning a job once it has failed" do
+  it "does not claim a failed job" do
     create(run_at: now)
     repository.claim_next(now)
     repository.mark_failed("job-1", now + 1)
 
-    expect(repository.due(now + 1)).to be_empty
+    expect(repository.claim_next(now + 1)).to be_nil
     expect(repository.find("job-1")).to be_failed
   end
 

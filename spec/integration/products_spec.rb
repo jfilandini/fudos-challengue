@@ -73,7 +73,7 @@ RSpec.describe "Products" do
       post_json "/products", { name: "Laptop", requested_by_user_id: "someone-else" }, auth_header
 
       expect(last_response.status).to eq(400)
-      expect(container.job_repository.due(container.clock.now)).to be_empty
+      expect(container.database.execute("SELECT COUNT(*) AS n FROM jobs").first["n"]).to eq(0)
     end
 
     it "refuses a name the contract does not allow" do

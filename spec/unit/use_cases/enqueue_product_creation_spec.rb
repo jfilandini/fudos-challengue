@@ -29,7 +29,8 @@ RSpec.describe Challenge::UseCases::EnqueueProductCreation do
   it "withholds the job from the worker until the delay has elapsed" do
     job = enqueue.call(name: "Laptop", requested_by_user_id: "1", idempotency_key: SecureRandom.uuid)
 
-    expect(jobs.due(clock.now)).to be_empty
-    expect(jobs.due(clock.now + 5).map(&:id)).to eq([job.id])
+    expect(jobs.claim_next(clock.now)).to be_nil
+    expect(jobs.find(job.id)).to be_pending
+    expect(jobs.claim_next(clock.now + 5)).to have_attributes(id: job.id, status: "in_progress")
   end
 end

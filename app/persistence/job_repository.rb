@@ -42,13 +42,6 @@ module Challenge
         row && to_job(row)
       end
 
-      def due(now)
-        @database.execute(
-          "SELECT #{COLUMNS} FROM jobs WHERE status = ? AND run_at <= ? ORDER BY run_at ASC, created_at ASC, id ASC",
-          [Domain::Job::PENDING, Support::Timestamp.serialize(now)]
-        ).map { |row| to_job(row) }
-      end
-
       # A single write statement selects and reserves one job atomically across
       # connections/processes. The reservation commits before processing begins.
       def claim_next(now)
