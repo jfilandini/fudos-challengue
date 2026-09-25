@@ -238,6 +238,16 @@ hay que confirmar que el worker original terminó; una fecha antigua no lo demue
 
 ## Mejoras futuras
 
+- **Productor/consumidor con un broker de mensajes:** el proyecto ya aplica este
+  patrón mediante la tabla `jobs`: la API produce solicitudes y el worker las
+  consume. Para un entorno productivo que requiera escalar ambos componentes de
+  forma independiente, evaluar un broker y workers en procesos separados. La API
+  publicaría mensajes y los consumidores ejecutarían la creación de productos.
+  Esta evolución requiere consumidores idempotentes, políticas de reintento y
+  manejo de mensajes fallidos, además de conservar la demora mínima de creación.
+  Si se persiste la solicitud en la base y se publica en el broker, evaluar un
+  outbox transaccional para evitar inconsistencias entre ambas operaciones.
+
 - **PostgreSQL en producción:** evaluar el reemplazo de SQLite por PostgreSQL como
   servicio separado, en otro contenedor o en un servicio administrado. Esto permitiría
   compartir una base centralizada entre varias instancias de la API y los workers,
