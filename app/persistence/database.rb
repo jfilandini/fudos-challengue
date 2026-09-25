@@ -15,10 +15,8 @@ module Challenge
       end
 
       def setup!
-        @monitor.synchronize do
-          @connection.transaction(:immediate) do
-            @connection.execute_batch(File.read(SCHEMA_PATH))
-          end
+        transaction(mode: :immediate) do
+          @connection.execute_batch(File.read(SCHEMA_PATH))
         end
         self
       end
