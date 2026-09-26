@@ -7,7 +7,7 @@ module Challenge
         @database = database
       end
 
-      def create(id:, name:, created_at:, requested_by_user_id: nil)
+      def create(id:, name:, created_at:, requested_by_user_id:)
         @database.execute(
           "INSERT INTO products (id, name, created_at, requested_by_user_id) VALUES (?, ?, ?, ?)",
           [id, name, Support::Timestamp.serialize(created_at), requested_by_user_id]
@@ -20,11 +20,6 @@ module Challenge
           "SELECT id, name, created_at, requested_by_user_id FROM products WHERE id = ? AND requested_by_user_id = ?",
           [id, requested_by_user_id]
         ).first
-        row && to_product(row)
-      end
-
-      def find(id)
-        row = @database.execute("SELECT id, name, created_at, requested_by_user_id FROM products WHERE id = ?", [id]).first
         row && to_product(row)
       end
 

@@ -6,7 +6,7 @@ RSpec.describe Challenge::Persistence::JobRepository do
   let(:now) { Time.utc(2026, 9, 18, 12, 0, 0) }
 
   def create(id: "job-1", run_at: now)
-    repository.create(id: id, product_id: "product-1", product_name: "Laptop", run_at: run_at, now: now)
+    repository.create(id: id, requested_by_user_id: "1", idempotency_key: id, product_id: "product-1", product_name: "Laptop", run_at: run_at, now: now)
   end
 
   it "creates a job that is pending and scheduled" do
@@ -19,10 +19,10 @@ RSpec.describe Challenge::Persistence::JobRepository do
   it "round trips a job" do
     create
 
-    expect(repository.find("job-1")).to have_attributes(id: "job-1", product_name: "Laptop")
+    expect(repository.find_for_user("job-1", requested_by_user_id: "1")).to have_attributes(id: "job-1", product_name: "Laptop")
   end
 
   it "returns nothing for an unknown job" do
-    expect(repository.find("job-1")).to be_nil
+    expect(repository.find_for_user("job-1", requested_by_user_id: "1")).to be_nil
   end
 end

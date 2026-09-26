@@ -38,7 +38,7 @@ begin
       inserted = 0
       product_names.each_with_index do |name, index|
         id = format("mock-user-%d-product-%02d", user.id, index + 1)
-        next if products.find(id)
+        next if products.find_for_user(id, requested_by_user_id: user.id.to_s)
 
         products.create(
           id: id, name: name, requested_by_user_id: user.id.to_s,

@@ -13,7 +13,7 @@ RSpec.describe "Independent job processors" do
     jobs = Challenge::Persistence::JobRepository.new(database)
     count.times do |index|
       jobs.create(id: "job-#{index}", product_id: "product-#{index}", product_name: "Coffee",
-                  run_at: FrozenClock.new.now, now: FrozenClock.new.now)
+                  requested_by_user_id: "1", idempotency_key: "request-#{index}", run_at: FrozenClock.new.now, now: FrozenClock.new.now)
     end
   end
 
@@ -79,7 +79,7 @@ RSpec.describe "Independent job processors" do
       Process.wait(pid)
       database = connect(path)
       jobs = Challenge::Persistence::JobRepository.new(database)
-      expect(jobs.find("job-0")).to be_in_progress
+      expect(jobs.find_for_user("job-0", requested_by_user_id: "1")).to be_in_progress
       expect(processor(database).call).to eq(0)
       expect(database.execute("SELECT * FROM products")).to be_empty
       database.close

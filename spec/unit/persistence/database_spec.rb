@@ -31,16 +31,16 @@ RSpec.describe Challenge::Persistence::Database do
       jobs.claim_next(now)
 
       2.times { expect(database.setup!).to equal(database) }
-      expect(products.find("existing")).to have_attributes(name: "Coffee", requested_by_user_id: "1")
-      expect(jobs.find("claimed")).to have_attributes(status: "in_progress", product_id: "future")
+      expect(products.find_for_user("existing", requested_by_user_id: "1")).to have_attributes(name: "Coffee", requested_by_user_id: "1")
+      expect(jobs.find_for_user("claimed", requested_by_user_id: "1")).to have_attributes(status: "in_progress", product_id: "future")
       database.close
 
       database = described_class.new(path).setup!
       jobs = Challenge::Persistence::JobRepository.new(database)
-      expect(jobs.find("claimed")).to be_in_progress
+      expect(jobs.find_for_user("claimed", requested_by_user_id: "1")).to be_in_progress
       expect(database.execute("SELECT idempotency_key FROM jobs").first["idempotency_key"]).to eq("original-key")
       expect(jobs.claim_next(now)).to be_nil
-      expect(Challenge::Persistence::ProductRepository.new(database).find("existing").name).to eq("Coffee")
+      expect(Challenge::Persistence::ProductRepository.new(database).find_for_user("existing", requested_by_user_id: "1").name).to eq("Coffee")
     ensure
       database&.close
     end

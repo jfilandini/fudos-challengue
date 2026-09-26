@@ -9,12 +9,12 @@ RSpec.describe "Product creation idempotency" do
     submit
     original = json_body
     location = last_response.headers["location"]
-    job = container.job_repository.find(original.fetch("job_id"))
+    job = container.job_repository.find_for_user(original.fetch("job_id"), requested_by_user_id: "1")
     submit
     expect(last_response.status).to eq(202)
     expect(json_body).to eq(original)
     expect(last_response.headers["location"]).to eq(location)
-    expect(container.job_repository.find(job.id).run_at).to eq(job.run_at)
+    expect(container.job_repository.find_for_user(job.id, requested_by_user_id: "1").run_at).to eq(job.run_at)
     expect(container.database.execute("SELECT COUNT(*) AS n FROM jobs").first["n"]).to eq(1)
 
     container.process_due_jobs.call
@@ -32,7 +32,7 @@ RSpec.describe "Product creation idempotency" do
     submit(name: "Tea")
     expect(last_response.status).to eq(409)
     expect(json_body.dig("error", "code")).to eq("idempotency_conflict")
-    expect(container.job_repository.find(original.fetch("job_id")).product_name).to eq("Coffee")
+    expect(container.job_repository.find_for_user(original.fetch("job_id"), requested_by_user_id: "1").product_name).to eq("Coffee")
     expect(container.database.execute("SELECT COUNT(*) AS n FROM jobs").first["n"]).to eq(1)
   end
 
@@ -52,7 +52,7 @@ RSpec.describe "Product creation idempotency" do
     container.job_repository.mark_failed(original.fetch("job_id"), container.clock.now)
     submit
     expect(json_body).to eq(original)
-    expect(container.job_repository.find(original.fetch("job_id"))).to be_failed
+    expect(container.job_repository.find_for_user(original.fetch("job_id"), requested_by_user_id: "1")).to be_failed
     expect(container.process_due_jobs.call).to eq(0)
   end
 

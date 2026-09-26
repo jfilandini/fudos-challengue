@@ -31,7 +31,7 @@ RSpec.describe "Products" do
     it "has not created the product by the time it answers" do
       created = enqueue_product
 
-      expect(container.product_repository.find(created["product_id"])).to be_nil
+      expect(container.product_repository.find_for_user(created["product_id"], requested_by_user_id: "1")).to be_nil
     end
 
     it "preserves the authenticated requester through the job and product" do
@@ -51,14 +51,14 @@ RSpec.describe "Products" do
         get "/jobs/#{created.fetch('job_id')}", {}, headers
         expect(json_body).to include("status" => "pending")
         expect(json_body).not_to have_key("requested_by_user_id")
-        expect(container.job_repository.find(created.fetch("job_id")).requested_by_user_id).to eq(user.id.to_s)
+        expect(container.job_repository.find_for_user(created.fetch("job_id"), requested_by_user_id: user.id.to_s).requested_by_user_id).to eq(user.id.to_s)
       end
       container.process_due_jobs.call
       creations.each do |user, created, headers|
         get "/products/#{created.fetch('product_id')}", {}, headers
         expect(last_response.status).to eq(200)
         expect(json_body).not_to have_key("requested_by_user_id")
-        expect(container.product_repository.find(created.fetch("product_id")).requested_by_user_id).to eq(user.id.to_s)
+        expect(container.product_repository.find_for_user(created.fetch("product_id"), requested_by_user_id: user.id.to_s).requested_by_user_id).to eq(user.id.to_s)
         get "/jobs/#{created.fetch('job_id')}", {}, headers
         expect(json_body).to include("status" => "completed")
         expect(json_body).not_to have_key("requested_by_user_id")

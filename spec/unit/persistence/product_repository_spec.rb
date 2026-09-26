@@ -12,11 +12,11 @@ RSpec.describe Challenge::Persistence::ProductRepository do
   it "round trips a product" do
     create(id: "product-1")
 
-    expect(repository.find("product-1")).to have_attributes(id: "product-1", name: "Laptop", created_at: now)
+    expect(repository.find_for_user("product-1", requested_by_user_id: "1")).to have_attributes(id: "product-1", name: "Laptop", created_at: now)
   end
 
   it "returns nothing for an unknown product" do
-    expect(repository.find("product-1")).to be_nil
+    expect(repository.find_for_user("product-1", requested_by_user_id: "1")).to be_nil
   end
 
   it "lists the most recently created product first" do

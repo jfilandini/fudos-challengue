@@ -20,9 +20,6 @@ RSpec.describe "Resource ownership" do
     @alice_jobs = 3.times.map { |i| create_for(@alice_headers, "Alice #{i}") }
     @bob_jobs = 2.times.map { |i| create_for(@bob_headers, "Bob #{i}") }
     container.process_due_jobs.call
-    container.product_repository.create(id: "legacy", name: "Unknown owner", created_at: container.clock.now)
-    container.job_repository.create(id: "legacy-job", product_id: "legacy-product", product_name: "Unknown",
-                                    run_at: container.clock.now, now: container.clock.now)
   end
 
   it "filters both page contents and totals before pagination" do
@@ -64,6 +61,17 @@ RSpec.describe "Resource ownership" do
   end
 
   it "hides legacy records without ownership" do
+    # Insert legacy rows directly: current creation calls always supply ownership.
+    timestamp = Challenge::Support::Timestamp.serialize(container.clock.now)
+    container.database.execute(
+      "INSERT INTO products (id, name, created_at) VALUES (?, ?, ?)",
+      ["legacy", "Unknown owner", timestamp]
+    )
+    container.database.execute(
+      "INSERT INTO jobs (id, product_id, product_name, status, run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ["legacy-job", "legacy-product", "Unknown", "pending", timestamp, timestamp, timestamp]
+    )
+
     get "/products/legacy", {}, @alice_headers
     expect(last_response.status).to eq(404)
     get "/jobs/legacy-job", {}, @alice_headers

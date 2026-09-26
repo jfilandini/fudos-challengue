@@ -13,7 +13,7 @@ ready = IO.new(3, "w")
 if ARGV.fetch(1) == "crash"
   job = jobs.claim_next(clock.now)
   database.transaction(mode: :immediate) do
-    products.create(id: job.product_id, name: job.product_name, created_at: clock.now)
+    products.create(requested_by_user_id: job.requested_by_user_id, id: job.product_id, name: job.product_name, created_at: clock.now)
     ready.write("!")
     ready.flush
     sleep 30 # The parent terminates this process before the transaction commits.
