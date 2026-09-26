@@ -158,6 +158,11 @@ posterior del job. También se registran respuestas estáticas y rechazos de aut
 
 ## Autenticación y aislamiento por usuario
 
+El challenge exige autenticación, pero no define si el catálogo es compartido.
+Para esta implementación se asume que cada cuenta representa un restaurante
+independiente: sus productos y solicitudes de creación solo son accesibles desde
+esa cuenta.
+
 `POST /auth/login` recibe `username` y `password`. Las contraseñas se almacenan como
 hashes BCrypt. Si las credenciales son válidas, se emite un JWT firmado con HS256,
 con una vigencia predeterminada de una hora.
